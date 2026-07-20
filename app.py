@@ -911,6 +911,7 @@ app.layout = html.Div(
                 html.Button("Delete", id="delete-build", n_clicks=0, className="build-action-button build-delete-button"),
             ], id="build-controls", className="build-controls", style={"display": "none"}),
             html.Div(id="build-message", className="build-message", role="status", **{"aria-live": "polite"}),
+            dcc.Interval(id="build-message-dismiss", interval=4500, n_intervals=0, disabled=True, max_intervals=1),
             dcc.ConfirmDialog(
                 id="confirm-build-overwrite",
                 message="A saved build already uses this name. Replace it with the current build?",
@@ -1372,7 +1373,7 @@ def selected_build_name(build_id):
 
 
 @callback(
-    Output("build-message", "children"),
+    Output("build-message", "children", allow_duplicate=True),
     Output("saved-build-dropdown", "value", allow_duplicate=True),
     Output("pending-build-load", "data", allow_duplicate=True),
     Output("character-name", "value", allow_duplicate=True),
@@ -1397,6 +1398,8 @@ def selected_build_name(build_id):
     Output("proficient-equipment-only", "value", allow_duplicate=True),
     Output("confirm-build-overwrite", "displayed"),
     Output("pending-build-overwrite", "data"),
+    Output("build-message-dismiss", "disabled", allow_duplicate=True),
+    Output("build-message-dismiss", "n_intervals", allow_duplicate=True),
     Input("save-build", "n_clicks"), Input("open-build", "n_clicks"), Input("delete-build", "n_clicks"),
     Input("confirm-build-overwrite", "submit_n_clicks"),
     State("saved-build-dropdown", "value"), State("build-name", "value"),
@@ -1429,11 +1432,11 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
     empty_restore = [no_update] * 29
     user_id, _ = user_identity()
     if not user_id:
-        return (build_notice("Sign in to manage saved builds."), no_update, no_update, *empty_restore, False, None)
+        return (build_notice("Sign in to manage saved builds."), no_update, no_update, *empty_restore, False, None, False, 0)
     trigger = ctx.triggered_id
     if trigger == "confirm-build-overwrite":
         if not pending_overwrite:
-            return (build_notice("There is no pending build to overwrite."), no_update, no_update, *empty_restore, False, None)
+            return (build_notice("There is no pending build to overwrite."), no_update, no_update, *empty_restore, False, None, False, 0)
         saved_id = save_build(
             user_id,
             pending_overwrite["name"],
@@ -1441,18 +1444,18 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             int(pending_overwrite["build_id"]),
         )
         saved_at = datetime.now().strftime("%I:%M:%S %p").lstrip("0")
-        return (build_notice(f"Build overwritten successfully at {saved_at}."), saved_id, no_update, *empty_restore, False, None)
+        return (build_notice(f"Build overwritten successfully at {saved_at}."), saved_id, no_update, *empty_restore, False, None, False, 0)
     if trigger == "delete-build":
         if not build_id:
-            return (build_notice("Choose a build to delete."), no_update, no_update, *empty_restore, False, None)
+            return (build_notice("Choose a build to delete."), no_update, no_update, *empty_restore, False, None, False, 0)
         delete_build(user_id, int(build_id))
-        return (build_notice("Build deleted."), None, None, *empty_restore, False, None)
+        return (build_notice("Build deleted."), None, None, *empty_restore, False, None, False, 0)
     if trigger == "open-build":
         if not build_id:
-            return (build_notice("Choose a build to open."), no_update, no_update, *empty_restore, False, None)
+            return (build_notice("Choose a build to open."), no_update, no_update, *empty_restore, False, None, False, 0)
         payload = load_build(user_id, int(build_id))
         if not payload:
-            return (build_notice("That build could not be found."), None, None, *empty_restore, False, None)
+            return (build_notice("That build could not be found."), None, None, *empty_restore, False, None, False, 0)
         equipment = payload.get("equipment", {})
         conditions = payload.get("conditions", {})
         return (
@@ -1469,6 +1472,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
             payload.get("proficient_only", []),
             False, None,
+            False, 0,
         )
     name = (build_name or character_name or "Unnamed Build").strip()[:120]
     payload = {
@@ -1495,10 +1499,23 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             build_notice(f'A build named "{name}" already exists. Confirm to overwrite it.'),
             no_update, no_update, *empty_restore, True,
             {"build_id": matching_build["id"], "name": name, "payload": payload},
+            False, 0,
         )
-    saved_id = save_build(user_id, name, payload, int(build_id) if build_id else None)
+    saved_id = save_build(user_id, name, payload)
     saved_at = datetime.now().strftime("%I:%M:%S %p").lstrip("0")
-    return (build_notice(f"Build saved successfully at {saved_at}."), saved_id, no_update, *empty_restore, False, None)
+    return (build_notice(f"Build saved successfully at {saved_at}."), saved_id, no_update, *empty_restore, False, None, False, 0)
+
+
+@callback(
+    Output("build-message", "children", allow_duplicate=True),
+    Output("build-message-dismiss", "disabled", allow_duplicate=True),
+    Input("build-message-dismiss", "n_intervals"),
+    prevent_initial_call=True,
+)
+def dismiss_build_notice(n_intervals):
+    if not n_intervals:
+        return no_update, no_update
+    return None, True
 
 
 @callback(
@@ -1553,8 +1570,9 @@ def clear_leveling(_clicks, class_ids, subclass_ids, feat_ids, feat_choice_ids, 
     Output("subrace-dropdown", "placeholder"),
     Output("subrace-field", "style"),
     Input("race-dropdown", "value"),
+    State("subrace-dropdown", "value"),
 )
-def update_subraces(race: str | None):
+def update_subraces(race: str | None, selected_subrace: str | None):
     if not race:
         return [], None, True, "Choose a race first", {"display": "none"}
 
@@ -1571,7 +1589,9 @@ def update_subraces(race: str | None):
         )
     if not options:
         return [], None, True, "This race has no subrace", {"display": "none"}
-    return options, None, False, "Choose a subrace", {}
+    valid_subraces = {option["value"] for option in options}
+    restored_subrace = selected_subrace if selected_subrace in valid_subraces else None
+    return options, restored_subrace, False, "Choose a subrace", {}
 
 
 @callback(
