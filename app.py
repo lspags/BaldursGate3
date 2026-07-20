@@ -3416,7 +3416,3 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
 
     data = {"name": name or "", "race": race, "subrace": subrace, "background": background, "human_versatility_skill": human_skill if race == "Human" else None}
     return name.strip() if name and name.strip() else "Unnamed Adventurer", summary, data
-
-
-if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8050, debug=True)
