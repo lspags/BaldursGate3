@@ -1321,15 +1321,21 @@ app.layout = html.Div(
 
 app.clientside_callback(
     """
-    function(nClicks) {
-        if (!nClicks) return window.dash_clientside.no_update;
+    function(confirmClicks) {
+        if (!confirmClicks) return window.dash_clientside.no_update;
         window.sessionStorage.clear();
-        window.location.reload();
+        for (let index = window.localStorage.length - 1; index >= 0; index--) {
+            const key = window.localStorage.key(index);
+            if (key && key.startsWith("_dash_persistence.")) {
+                window.localStorage.removeItem(key);
+            }
+        }
+        window.location.replace(window.location.pathname + window.location.search);
         return Date.now();
     }
     """,
     Output("clear-character-sink", "data"),
-    Input("clear-character", "n_clicks"),
+    Input("confirm-clear-character", "submit_n_clicks"),
     prevent_initial_call=True,
 )
 
