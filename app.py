@@ -1429,7 +1429,15 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                         ranged_main, ranged_off, headwear, armour, handwear, footwear, necklace, ring_1, ring_2,
                         visibility, elevation, attacker_conditions, target_conditions, active_features,
                         cleaver_type, lightning_charges, limited_resources, proficient_only, pending_overwrite):
-    empty_restore = [no_update] * 29
+    # The first three restore outputs are ALL-pattern level controls and must
+    # return one value per matching component, even when none should change.
+    empty_restore = [
+        *([no_update] * 6),
+        [no_update] * 12,
+        [no_update] * 12,
+        [no_update] * 12,
+        *([no_update] * 20),
+    ]
     user_id, _ = user_identity()
     if not user_id:
         return (build_notice("Sign in to manage saved builds."), no_update, no_update, *empty_restore, False, None, False, 0)
