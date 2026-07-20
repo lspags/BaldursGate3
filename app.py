@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import re
+import time
 from datetime import datetime
 from collections import Counter
 from pathlib import Path
@@ -1320,6 +1321,11 @@ def restored_pattern_values(records, ids):
     return [next((record.get("value") for record in records if record.get("id") == item_id), None) for item_id in (ids or [])]
 
 
+def build_notice(message: str):
+    """Return a fresh toast node so repeated notices always animate."""
+    return html.Div(message, id=f"build-toast-{time.time_ns()}", className="build-toast-card")
+
+
 @callback(
     Output("account-status", "children"), Output("build-controls", "style"),
     Input("account-refresh", "n_intervals"),
@@ -1422,11 +1428,11 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
     empty_restore = [no_update] * 29
     user_id, _ = user_identity()
     if not user_id:
-        return ("Sign in to manage saved builds.", no_update, no_update, *empty_restore, False, None)
+        return (build_notice("Sign in to manage saved builds."), no_update, no_update, *empty_restore, False, None)
     trigger = ctx.triggered_id
     if trigger == "confirm-build-overwrite":
         if not pending_overwrite:
-            return ("There is no pending build to overwrite.", no_update, no_update, *empty_restore, False, None)
+            return (build_notice("There is no pending build to overwrite."), no_update, no_update, *empty_restore, False, None)
         saved_id = save_build(
             user_id,
             pending_overwrite["name"],
@@ -1434,22 +1440,22 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             int(pending_overwrite["build_id"]),
         )
         saved_at = datetime.now().strftime("%I:%M:%S %p").lstrip("0")
-        return (f"Build overwritten successfully at {saved_at}.", saved_id, no_update, *empty_restore, False, None)
+        return (build_notice(f"Build overwritten successfully at {saved_at}."), saved_id, no_update, *empty_restore, False, None)
     if trigger == "delete-build":
         if not build_id:
-            return ("Choose a build to delete.", no_update, no_update, *empty_restore, False, None)
+            return (build_notice("Choose a build to delete."), no_update, no_update, *empty_restore, False, None)
         delete_build(user_id, int(build_id))
-        return ("Build deleted.", None, None, *empty_restore, False, None)
+        return (build_notice("Build deleted."), None, None, *empty_restore, False, None)
     if trigger == "open-build":
         if not build_id:
-            return ("Choose a build to open.", no_update, no_update, *empty_restore, False, None)
+            return (build_notice("Choose a build to open."), no_update, no_update, *empty_restore, False, None)
         payload = load_build(user_id, int(build_id))
         if not payload:
-            return ("That build could not be found.", None, None, *empty_restore, False, None)
+            return (build_notice("That build could not be found."), None, None, *empty_restore, False, None)
         equipment = payload.get("equipment", {})
         conditions = payload.get("conditions", {})
         return (
-            "Build opened.", build_id, payload,
+            build_notice("Build opened."), build_id, payload,
             payload.get("character_name"), payload.get("race"), payload.get("subrace"), payload.get("background"),
             payload.get("human_skill"), payload.get("abilities"),
             (payload.get("classes") or [None] * 12)[:12], (payload.get("subclasses") or [None] * 12)[:12],
@@ -1485,13 +1491,13 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
     )
     if matching_build:
         return (
-            f'A build named "{name}" already exists. Confirm to overwrite it.',
+            build_notice(f'A build named "{name}" already exists. Confirm to overwrite it.'),
             no_update, no_update, *empty_restore, True,
             {"build_id": matching_build["id"], "name": name, "payload": payload},
         )
     saved_id = save_build(user_id, name, payload, int(build_id) if build_id else None)
     saved_at = datetime.now().strftime("%I:%M:%S %p").lstrip("0")
-    return (f"Build saved successfully at {saved_at}.", saved_id, no_update, *empty_restore, False, None)
+    return (build_notice(f"Build saved successfully at {saved_at}."), saved_id, no_update, *empty_restore, False, None)
 
 
 @callback(
