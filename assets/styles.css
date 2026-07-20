@@ -362,6 +362,16 @@ body {
 .turn-condition-card { margin-top: 28px; padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
 .optimized-turn-card { margin-top: 18px; padding: 20px; background: linear-gradient(145deg, rgba(126, 38, 41, .13), transparent 50%), var(--panel); border: 1px solid rgba(209, 173, 97, .38); border-radius: 12px; }
 .optimized-turn-empty { padding: 14px; color: var(--muted); background: rgba(15, 15, 18, .48); border: 1px dashed rgba(209, 173, 97, .28); border-radius: 6px; font-size: .85rem; line-height: 1.6; }
+.account-panel { display: grid; gap: 10px; margin: 0 0 18px; padding: 13px 16px; color: var(--ink); background: rgba(20, 18, 18, .82); border: 1px solid rgba(209, 173, 97, .32); border-radius: 8px; }
+.account-status > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--muted); font-size: .8rem; }
+.account-link { color: var(--gold-bright); text-decoration: none; }
+.account-link:hover { text-decoration: underline; }
+.build-controls { display: grid; grid-template-columns: minmax(160px, .7fr) minmax(260px, 1.3fr) repeat(3, auto); gap: 9px; align-items: center; }
+.build-name-input { min-width: 0; padding: 10px 11px; color: var(--ink); background: rgba(15, 15, 18, .62); border: 1px solid rgba(209, 173, 97, .32); border-radius: 5px; }
+.build-dropdown { min-width: 0; }
+.build-action-button { padding: 10px 14px; color: #fff8e7; background: #6f552d; border: 1px solid var(--gold); border-radius: 5px; cursor: pointer; }
+.build-delete-button { background: #72282c; }
+.build-message { min-height: 1em; color: var(--gold-bright); font-size: .76rem; }
 .optimized-turn-result { display: grid; gap: 14px; }
 .optimizer-totals { display: grid; grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 10px; }
 .optimizer-totals > div { display: grid; gap: 4px; padding: 12px; text-align: center; background: rgba(15, 15, 18, .62); border: 1px solid rgba(209, 173, 97, .3); border-radius: 6px; }
@@ -409,6 +419,7 @@ body {
   .equipment-grid { grid-template-columns: 1fr; }
   .turn-condition-grid { grid-template-columns: 1fr; }
   .equipment-dropdown .Select-menu-outer { width: 100%; min-width: 100%; }
+  .build-controls { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 520px) {

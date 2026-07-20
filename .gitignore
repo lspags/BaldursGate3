@@ -9,5 +9,8 @@ dash.stderr.log
 .spell_description_cache.clixml
 .where_to_find_cache.clixml
 
+# Local published-mode database
+bg3_published_local.db
+
 # Local agent metadata
 .agents/

@@ -6,7 +6,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html
+from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_update
+
+from persistence import (
+    AUTH_ENABLED, delete_build, init_persistence, list_builds, load_build, save_build, user_identity,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -882,6 +886,7 @@ def class_resource_group(resources: list[dict[str, Any]]):
 
 app = Dash(__name__, title="BG3 Character Builder", suppress_callback_exceptions=True)
 server = app.server
+init_persistence(server)
 
 app.layout = html.Div(
     [
@@ -893,7 +898,20 @@ app.layout = html.Div(
             ],
             className="hero",
         ),
+        html.Section([
+            dcc.Interval(id="account-refresh", interval=3_600_000, n_intervals=0, max_intervals=1),
+            html.Div(id="account-status", className="account-status"),
+            html.Div([
+                dcc.Input(id="build-name", placeholder="Build name", maxLength=120, className="build-name-input"),
+                dcc.Dropdown(id="saved-build-dropdown", placeholder="Open a saved build", className="rich-dropdown build-dropdown"),
+                html.Button("Save", id="save-build", n_clicks=0, className="build-action-button"),
+                html.Button("Open", id="open-build", n_clicks=0, className="build-action-button"),
+                html.Button("Delete", id="delete-build", n_clicks=0, className="build-action-button build-delete-button"),
+            ], id="build-controls", className="build-controls", style={"display": "none"}),
+            html.Div(id="build-message", className="build-message"),
+        ], className="account-panel", style={} if AUTH_ENABLED else {"display": "none"}),
         dcc.Store(id="character-store", storage_type="session"),
+        dcc.Store(id="pending-build-load", storage_type="memory"),
         dcc.Store(
             id="abilities-store",
             data={"scores": {ability: 8 for ability in ABILITIES}, "plus_two": None, "plus_one": None},
@@ -1285,6 +1303,185 @@ app.layout = html.Div(
     ],
     className="app-shell",
 )
+
+
+def packed_pattern_values(values, ids):
+    return [{"id": item_id, "value": value} for value, item_id in zip(values or [], ids or [])]
+
+
+def restored_pattern_values(records, ids):
+    records = records or []
+    return [next((record.get("value") for record in records if record.get("id") == item_id), None) for item_id in (ids or [])]
+
+
+@callback(
+    Output("account-status", "children"), Output("build-controls", "style"),
+    Input("account-refresh", "n_intervals"),
+)
+def render_account_status(_interval):
+    user_id, email = user_identity()
+    if not AUTH_ENABLED:
+        return [], {"display": "none"}
+    if not user_id:
+        return html.Div([
+            html.Span("Guest mode — sign in to save builds."),
+            html.A("Sign in", href="login", className="account-link"),
+            html.A("Create account", href="register", className="account-link"),
+        ]), {"display": "none"}
+    return html.Div([
+        html.Span(f"Signed in as {email}"), html.A("Sign out", href="logout", className="account-link")
+    ]), {}
+
+
+@callback(
+    Output("saved-build-dropdown", "options"),
+    Input("account-refresh", "n_intervals"), Input("build-message", "children"),
+)
+def refresh_saved_build_options(_interval, _message):
+    user_id, _ = user_identity()
+    if not user_id:
+        return []
+    return [{"label": row["name"], "value": row["id"]} for row in list_builds(user_id)]
+
+
+@callback(
+    Output("build-name", "value"),
+    Input("saved-build-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def selected_build_name(build_id):
+    user_id, _ = user_identity()
+    if not user_id or not build_id:
+        return no_update
+    row = next((row for row in list_builds(user_id) if row["id"] == int(build_id)), None)
+    return row["name"] if row else no_update
+
+
+@callback(
+    Output("build-message", "children"),
+    Output("saved-build-dropdown", "value", allow_duplicate=True),
+    Output("pending-build-load", "data", allow_duplicate=True),
+    Output("character-name", "value", allow_duplicate=True),
+    Output("race-dropdown", "value", allow_duplicate=True), Output("subrace-dropdown", "value", allow_duplicate=True),
+    Output("background-dropdown", "value", allow_duplicate=True), Output("human-versatility-skill", "value", allow_duplicate=True),
+    Output("abilities-store", "data", allow_duplicate=True),
+    Output({"type": "level-class", "level": ALL}, "value", allow_duplicate=True),
+    Output({"type": "level-subclass", "level": ALL}, "value", allow_duplicate=True),
+    Output({"type": "level-feat", "level": ALL}, "value", allow_duplicate=True),
+    Output("equipment-melee-main", "value", allow_duplicate=True), Output("equipment-melee-off", "value", allow_duplicate=True),
+    Output("equipment-ranged-main", "value", allow_duplicate=True), Output("equipment-ranged-off", "value", allow_duplicate=True),
+    Output("equipment-headwear", "value", allow_duplicate=True), Output("equipment-armour", "value", allow_duplicate=True),
+    Output("equipment-handwear", "value", allow_duplicate=True), Output("equipment-footwear", "value", allow_duplicate=True),
+    Output("equipment-necklace", "value", allow_duplicate=True), Output("equipment-ring-1", "value", allow_duplicate=True),
+    Output("equipment-ring-2", "value", allow_duplicate=True),
+    Output("turn-visibility", "value", allow_duplicate=True), Output("turn-elevation", "value", allow_duplicate=True),
+    Output("turn-attacker-conditions", "value", allow_duplicate=True), Output("turn-target-conditions", "value", allow_duplicate=True),
+    Output("optimizer-active-features", "value", allow_duplicate=True),
+    Output("optimizer-elemental-cleaver-type", "value", allow_duplicate=True),
+    Output("optimizer-lightning-charges", "value", allow_duplicate=True),
+    Output("optimizer-use-limited-resources", "value", allow_duplicate=True),
+    Output("proficient-equipment-only", "value", allow_duplicate=True),
+    Input("save-build", "n_clicks"), Input("open-build", "n_clicks"), Input("delete-build", "n_clicks"),
+    State("saved-build-dropdown", "value"), State("build-name", "value"),
+    State("character-name", "value"), State("race-dropdown", "value"), State("subrace-dropdown", "value"),
+    State("background-dropdown", "value"), State("human-versatility-skill", "value"), State("abilities-store", "data"),
+    State({"type": "level-class", "level": ALL}, "value"), State({"type": "level-subclass", "level": ALL}, "value"),
+    State({"type": "level-feat", "level": ALL}, "value"),
+    State({"type": "feat-choice", "level": ALL, "field": ALL}, "value"), State({"type": "feat-choice", "level": ALL, "field": ALL}, "id"),
+    State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"), State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
+    State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"), State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
+    State("equipment-melee-main", "value"), State("equipment-melee-off", "value"),
+    State("equipment-ranged-main", "value"), State("equipment-ranged-off", "value"),
+    State("equipment-headwear", "value"), State("equipment-armour", "value"),
+    State("equipment-handwear", "value"), State("equipment-footwear", "value"),
+    State("equipment-necklace", "value"), State("equipment-ring-1", "value"), State("equipment-ring-2", "value"),
+    State("turn-visibility", "value"), State("turn-elevation", "value"),
+    State("turn-attacker-conditions", "value"), State("turn-target-conditions", "value"),
+    State("optimizer-active-features", "value"), State("optimizer-elemental-cleaver-type", "value"),
+    State("optimizer-lightning-charges", "value"), State("optimizer-use-limited-resources", "value"),
+    State("proficient-equipment-only", "value"),
+    prevent_initial_call=True,
+)
+def manage_saved_builds(_save, _open, _delete, build_id, build_name, character_name, race, subrace, background,
+                        human_skill, abilities, classes, subclasses, feats, feat_choice_values, feat_choice_ids,
+                        class_choice_values, class_choice_ids, spell_values, spell_ids, melee_main, melee_off,
+                        ranged_main, ranged_off, headwear, armour, handwear, footwear, necklace, ring_1, ring_2,
+                        visibility, elevation, attacker_conditions, target_conditions, active_features,
+                        cleaver_type, lightning_charges, limited_resources, proficient_only):
+    empty_restore = [no_update] * 29
+    user_id, _ = user_identity()
+    if not user_id:
+        return ("Sign in to manage saved builds.", no_update, no_update, *empty_restore)
+    trigger = ctx.triggered_id
+    if trigger == "delete-build":
+        if not build_id:
+            return ("Choose a build to delete.", no_update, no_update, *empty_restore)
+        delete_build(user_id, int(build_id))
+        return ("Build deleted.", None, None, *empty_restore)
+    if trigger == "open-build":
+        if not build_id:
+            return ("Choose a build to open.", no_update, no_update, *empty_restore)
+        payload = load_build(user_id, int(build_id))
+        if not payload:
+            return ("That build could not be found.", None, None, *empty_restore)
+        equipment = payload.get("equipment", {})
+        conditions = payload.get("conditions", {})
+        return (
+            "Build opened.", build_id, payload,
+            payload.get("character_name"), payload.get("race"), payload.get("subrace"), payload.get("background"),
+            payload.get("human_skill"), payload.get("abilities"),
+            (payload.get("classes") or [None] * 12)[:12], (payload.get("subclasses") or [None] * 12)[:12],
+            (payload.get("feats") or [None] * 12)[:12],
+            equipment.get("melee_main"), equipment.get("melee_off"), equipment.get("ranged_main"), equipment.get("ranged_off"),
+            equipment.get("headwear"), equipment.get("armour"), equipment.get("handwear"), equipment.get("footwear"),
+            equipment.get("necklace"), equipment.get("ring_1"), equipment.get("ring_2"),
+            conditions.get("visibility", "No condition"), conditions.get("elevation", "No condition"),
+            conditions.get("attacker", []), conditions.get("target", []), conditions.get("active_features", []),
+            conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
+            payload.get("proficient_only", []),
+        )
+    name = (build_name or character_name or "Unnamed Build").strip()[:120]
+    payload = {
+        "schema_version": 1, "character_name": character_name, "race": race, "subrace": subrace,
+        "background": background, "human_skill": human_skill, "abilities": abilities,
+        "classes": list(classes or []), "subclasses": list(subclasses or []), "feats": list(feats or []),
+        "feat_choices": packed_pattern_values(feat_choice_values, feat_choice_ids),
+        "class_choices": packed_pattern_values(class_choice_values, class_choice_ids),
+        "spell_choices": packed_pattern_values(spell_values, spell_ids),
+        "equipment": {"melee_main": melee_main, "melee_off": melee_off, "ranged_main": ranged_main,
+                      "ranged_off": ranged_off, "headwear": headwear, "armour": armour, "handwear": handwear,
+                      "footwear": footwear, "necklace": necklace, "ring_1": ring_1, "ring_2": ring_2},
+        "conditions": {"visibility": visibility, "elevation": elevation, "attacker": attacker_conditions,
+                       "target": target_conditions, "active_features": active_features, "cleaver_type": cleaver_type,
+                       "lightning_charges": lightning_charges, "limited_resources": limited_resources},
+        "proficient_only": proficient_only,
+    }
+    saved_id = save_build(user_id, name, payload, int(build_id) if build_id else None)
+    return ("Build saved.", saved_id, no_update, *empty_restore)
+
+
+@callback(
+    Output({"type": "feat-choice", "level": ALL, "field": ALL}, "value", allow_duplicate=True),
+    Output({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value", allow_duplicate=True),
+    Output({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value", allow_duplicate=True),
+    Output("pending-build-load", "data", allow_duplicate=True),
+    Input("pending-build-load", "data"), Input({"type": "feat-choice-container", "level": ALL}, "children"),
+    Input({"type": "class-choice-container", "level": ALL}, "children"), Input("spell-builder", "children"),
+    State({"type": "feat-choice", "level": ALL, "field": ALL}, "id"),
+    State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
+    State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def restore_dynamic_build_choices(payload, _feat_children, _class_children, _spell_children,
+                                  feat_ids, class_ids, spell_ids):
+    if not payload:
+        return [no_update] * len(feat_ids or []), [no_update] * len(class_ids or []), [no_update] * len(spell_ids or []), no_update
+    return (
+        restored_pattern_values(payload.get("feat_choices"), feat_ids),
+        restored_pattern_values(payload.get("class_choices"), class_ids),
+        restored_pattern_values(payload.get("spell_choices"), spell_ids),
+        None,
+    )
 
 
 @callback(
