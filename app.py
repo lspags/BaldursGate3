@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import re
+from datetime import datetime
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -909,6 +910,11 @@ app.layout = html.Div(
                 html.Button("Delete", id="delete-build", n_clicks=0, className="build-action-button build-delete-button"),
             ], id="build-controls", className="build-controls", style={"display": "none"}),
             html.Div(id="build-message", className="build-message"),
+            dcc.ConfirmDialog(
+                id="confirm-build-overwrite",
+                message="A saved build already uses this name. Replace it with the current build?",
+            ),
+            dcc.Store(id="pending-build-overwrite", storage_type="memory"),
         ], className="account-panel", style={} if AUTH_ENABLED else {"display": "none"}),
         dcc.Store(id="character-store", storage_type="session"),
         dcc.Store(id="pending-build-load", storage_type="memory"),
@@ -1381,7 +1387,10 @@ def selected_build_name(build_id):
     Output("optimizer-lightning-charges", "value", allow_duplicate=True),
     Output("optimizer-use-limited-resources", "value", allow_duplicate=True),
     Output("proficient-equipment-only", "value", allow_duplicate=True),
+    Output("confirm-build-overwrite", "displayed"),
+    Output("pending-build-overwrite", "data"),
     Input("save-build", "n_clicks"), Input("open-build", "n_clicks"), Input("delete-build", "n_clicks"),
+    Input("confirm-build-overwrite", "submit_n_clicks"),
     State("saved-build-dropdown", "value"), State("build-name", "value"),
     State("character-name", "value"), State("race-dropdown", "value"), State("subrace-dropdown", "value"),
     State("background-dropdown", "value"), State("human-versatility-skill", "value"), State("abilities-store", "data"),
@@ -1400,30 +1409,42 @@ def selected_build_name(build_id):
     State("optimizer-active-features", "value"), State("optimizer-elemental-cleaver-type", "value"),
     State("optimizer-lightning-charges", "value"), State("optimizer-use-limited-resources", "value"),
     State("proficient-equipment-only", "value"),
+    State("pending-build-overwrite", "data"),
     prevent_initial_call=True,
 )
-def manage_saved_builds(_save, _open, _delete, build_id, build_name, character_name, race, subrace, background,
+def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, build_name, character_name, race, subrace, background,
                         human_skill, abilities, classes, subclasses, feats, feat_choice_values, feat_choice_ids,
                         class_choice_values, class_choice_ids, spell_values, spell_ids, melee_main, melee_off,
                         ranged_main, ranged_off, headwear, armour, handwear, footwear, necklace, ring_1, ring_2,
                         visibility, elevation, attacker_conditions, target_conditions, active_features,
-                        cleaver_type, lightning_charges, limited_resources, proficient_only):
+                        cleaver_type, lightning_charges, limited_resources, proficient_only, pending_overwrite):
     empty_restore = [no_update] * 29
     user_id, _ = user_identity()
     if not user_id:
-        return ("Sign in to manage saved builds.", no_update, no_update, *empty_restore)
+        return ("Sign in to manage saved builds.", no_update, no_update, *empty_restore, False, None)
     trigger = ctx.triggered_id
+    if trigger == "confirm-build-overwrite":
+        if not pending_overwrite:
+            return ("There is no pending build to overwrite.", no_update, no_update, *empty_restore, False, None)
+        saved_id = save_build(
+            user_id,
+            pending_overwrite["name"],
+            pending_overwrite["payload"],
+            int(pending_overwrite["build_id"]),
+        )
+        saved_at = datetime.now().strftime("%I:%M:%S %p").lstrip("0")
+        return (f"Build overwritten successfully at {saved_at}.", saved_id, no_update, *empty_restore, False, None)
     if trigger == "delete-build":
         if not build_id:
-            return ("Choose a build to delete.", no_update, no_update, *empty_restore)
+            return ("Choose a build to delete.", no_update, no_update, *empty_restore, False, None)
         delete_build(user_id, int(build_id))
-        return ("Build deleted.", None, None, *empty_restore)
+        return ("Build deleted.", None, None, *empty_restore, False, None)
     if trigger == "open-build":
         if not build_id:
-            return ("Choose a build to open.", no_update, no_update, *empty_restore)
+            return ("Choose a build to open.", no_update, no_update, *empty_restore, False, None)
         payload = load_build(user_id, int(build_id))
         if not payload:
-            return ("That build could not be found.", None, None, *empty_restore)
+            return ("That build could not be found.", None, None, *empty_restore, False, None)
         equipment = payload.get("equipment", {})
         conditions = payload.get("conditions", {})
         return (
@@ -1439,6 +1460,7 @@ def manage_saved_builds(_save, _open, _delete, build_id, build_name, character_n
             conditions.get("attacker", []), conditions.get("target", []), conditions.get("active_features", []),
             conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
             payload.get("proficient_only", []),
+            False, None,
         )
     name = (build_name or character_name or "Unnamed Build").strip()[:120]
     payload = {
@@ -1456,8 +1478,19 @@ def manage_saved_builds(_save, _open, _delete, build_id, build_name, character_n
                        "lightning_charges": lightning_charges, "limited_resources": limited_resources},
         "proficient_only": proficient_only,
     }
+    matching_build = next(
+        (row for row in list_builds(user_id) if row["name"].strip().casefold() == name.casefold()),
+        None,
+    )
+    if matching_build:
+        return (
+            f'A build named "{name}" already exists. Confirm to overwrite it.',
+            no_update, no_update, *empty_restore, True,
+            {"build_id": matching_build["id"], "name": name, "payload": payload},
+        )
     saved_id = save_build(user_id, name, payload, int(build_id) if build_id else None)
-    return ("Build saved.", saved_id, no_update, *empty_restore)
+    saved_at = datetime.now().strftime("%I:%M:%S %p").lstrip("0")
+    return (f"Build saved successfully at {saved_at}.", saved_id, no_update, *empty_restore, False, None)
 
 
 @callback(
