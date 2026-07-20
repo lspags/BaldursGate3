@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_update
+from dash import ALL, Dash, Input, Output, State, callback, clientside_callback, ctx, dcc, html, no_update
 
 from persistence import (
     AUTH_ENABLED, delete_build, init_persistence, list_builds, load_build, save_build, user_identity,
@@ -915,6 +915,7 @@ app.layout = html.Div(
                 message="A saved build already uses this name. Replace it with the current build?",
             ),
             dcc.Store(id="pending-build-overwrite", storage_type="memory"),
+            dcc.Store(id="build-alert-sink", storage_type="memory"),
         ], className="account-panel", style={} if AUTH_ENABLED else {"display": "none"}),
         dcc.Store(id="character-store", storage_type="session"),
         dcc.Store(id="pending-build-load", storage_type="memory"),
@@ -1342,12 +1343,28 @@ def render_account_status(_interval):
 @callback(
     Output("saved-build-dropdown", "options"),
     Input("account-refresh", "n_intervals"), Input("build-message", "children"),
+    Input("saved-build-dropdown", "value"),
 )
-def refresh_saved_build_options(_interval, _message):
+def refresh_saved_build_options(_interval, _message, _selected_build):
     user_id, _ = user_identity()
     if not user_id:
         return []
     return [{"label": row["name"], "value": row["id"]} for row in list_builds(user_id)]
+
+
+clientside_callback(
+    """
+    function(message) {
+        if (typeof message === "string" && message.includes("successfully")) {
+            window.alert(message);
+        }
+        return Date.now();
+    }
+    """,
+    Output("build-alert-sink", "data"),
+    Input("build-message", "children"),
+    prevent_initial_call=True,
+)
 
 
 @callback(
