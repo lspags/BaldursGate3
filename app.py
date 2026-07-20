@@ -11,7 +11,8 @@ from typing import Any
 from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_update
 
 from persistence import (
-    AUTH_ENABLED, delete_build, init_persistence, list_builds, load_build, save_build, user_identity,
+    AUTH_ENABLED, delete_build, delete_team, init_persistence, list_builds, list_teams, load_build,
+    save_build, save_team, user_identity,
 )
 
 
@@ -910,6 +911,13 @@ app.layout = html.Div(
             dcc.Interval(id="account-refresh", interval=3_600_000, n_intervals=0, max_intervals=1),
             html.Div(id="account-status", className="account-status"),
             html.Div([
+                dcc.RadioItems(
+                    id="workspace-mode", value="character",
+                    options=[{"label": "Character Builder", "value": "character"}, {"label": "Team Builder", "value": "team"}],
+                    inline=True, className="workspace-mode-toggle",
+                ),
+            ], id="workspace-mode-controls", style={"display": "none"}),
+            html.Div([
                 dcc.Input(id="build-name", placeholder="Build name", maxLength=120, className="build-name-input"),
                 dcc.Dropdown(id="saved-build-dropdown", placeholder="Open a saved build", className="rich-dropdown build-dropdown"),
                 html.Button("Save", id="save-build", n_clicks=0, className="build-action-button"),
@@ -1325,8 +1333,31 @@ app.layout = html.Div(
                     className="character-sheet",
                 ),
             ],
-            className="builder-workspace",
+            id="character-builder-view", className="builder-workspace",
         ),
+        html.Section([
+            html.Div([
+                html.P("SIGNED-IN WORKSPACE", className="eyebrow"),
+                html.H2("Team Builder"),
+                html.P("Choose exactly four saved characters and review their loadouts side by side.", className="leveling-intro"),
+            ], className="leveling-header"),
+            html.Div([
+                dcc.Input(id="team-name", placeholder="Team name", maxLength=120, className="build-name-input"),
+                dcc.Dropdown(id="saved-team-dropdown", placeholder="Open a saved team", className="rich-dropdown build-dropdown"),
+                html.Button("Save Team", id="save-team", n_clicks=0, className="build-action-button"),
+                html.Button("Open", id="open-team", n_clicks=0, className="build-action-button"),
+                html.Button("Delete", id="delete-team", n_clicks=0, className="build-action-button build-delete-button"),
+            ], className="build-controls team-controls"),
+            html.Div([
+                html.Div([html.Label(f"Team member {slot}"), dcc.Dropdown(id=f"team-member-{slot}", placeholder="Choose a saved character", className="rich-dropdown")], className="field")
+                for slot in range(1, 5)
+            ], className="team-member-selectors"),
+            html.Div(id="team-equipment-warning", className="team-equipment-warning"),
+            html.Div(id="team-member-summaries", className="team-member-summaries"),
+            html.Div(id="team-message", className="team-message", role="status"),
+            dcc.ConfirmDialog(id="confirm-team-overwrite", message="A saved team already uses this name. Replace it?"),
+            dcc.Store(id="pending-team-overwrite", storage_type="memory"),
+        ], id="team-builder-view", className="team-builder-view", style={"display": "none"}),
     ],
     className="app-shell",
 )
@@ -1385,6 +1416,137 @@ def render_account_status(_interval):
     return html.Div([
         html.Span(f"Signed in as {email}"), html.A("Sign out", href="logout", className="account-link")
     ]), {}
+
+
+@callback(Output("workspace-mode-controls", "style"), Input("account-refresh", "n_intervals"))
+def show_workspace_mode(_interval):
+    user_id, _ = user_identity()
+    return {} if user_id else {"display": "none"}
+
+
+@callback(
+    Output("character-builder-view", "style"), Output("team-builder-view", "style"),
+    Input("workspace-mode", "value"),
+)
+def switch_workspace(mode):
+    user_id, _ = user_identity()
+    if mode == "team" and user_id:
+        return {"display": "none"}, {}
+    return {}, {"display": "none"}
+
+
+@callback(
+    Output("team-member-1", "options"), Output("team-member-2", "options"),
+    Output("team-member-3", "options"), Output("team-member-4", "options"),
+    Output("saved-team-dropdown", "options"),
+    Input("account-refresh", "n_intervals"), Input("team-message", "children"), Input("build-message", "children"),
+)
+def refresh_team_options(_interval, _team_message, _build_message):
+    user_id, _ = user_identity()
+    if not user_id:
+        return [], [], [], [], []
+    build_options = [{"label": row["name"], "value": row["id"]} for row in list_builds(user_id)]
+    team_options = [{"label": row["name"], "value": row["id"]} for row in list_teams(user_id)]
+    return build_options, build_options, build_options, build_options, team_options
+
+
+def team_member_card(payload, slot):
+    classes = [value for value in payload.get("classes", []) if value]
+    class_counts = Counter(classes)
+    class_line = " / ".join(f"{name} {level}" for name, level in class_counts.items()) or "No class"
+    equipment_ids = [value for value in (payload.get("equipment") or {}).values() if value]
+    equipment_names = [EQUIPMENT_BY_ID[value]["item"] for value in equipment_ids if value in EQUIPMENT_BY_ID]
+    spells = []
+    for record in payload.get("spell_choices") or []:
+        value = record.get("value")
+        spells.extend(value if isinstance(value, list) else ([value] if value else []))
+    attacks = []
+    for record in payload.get("class_choices") or []:
+        value = record.get("value")
+        attacks.extend(value if isinstance(value, list) else ([value] if value else []))
+    feats = [value for value in payload.get("feats", []) if value]
+
+    def summary(label, values):
+        return html.Div([html.Strong(label), html.P(", ".join(dict.fromkeys(values)) if values else "None")], className="team-summary-section")
+
+    return html.Article([
+        html.Div([html.Span(f"Member {slot}"), html.H3(payload.get("character_name") or "Unnamed Adventurer"), html.P(class_line)], className="team-card-heading"),
+        summary("Equipment", equipment_names), summary("Attacks & class choices", attacks),
+        summary("Spells", spells), summary("Feats", feats),
+    ], className="team-member-card")
+
+
+@callback(
+    Output("team-member-summaries", "children"), Output("team-equipment-warning", "children"),
+    Input("team-member-1", "value"), Input("team-member-2", "value"),
+    Input("team-member-3", "value"), Input("team-member-4", "value"),
+)
+def render_team_members(*build_ids):
+    user_id, _ = user_identity()
+    if not user_id:
+        return [], []
+    cards, item_members = [], {}
+    for slot, build_id in enumerate(build_ids, 1):
+        if not build_id:
+            cards.append(html.Article([html.H3(f"Member {slot}"), html.P("Choose a saved character.")], className="team-member-card team-member-card--empty"))
+            continue
+        payload = load_build(user_id, int(build_id)) or {}
+        cards.append(team_member_card(payload, slot))
+        for equipment_id in set(value for value in (payload.get("equipment") or {}).values() if value):
+            item_members.setdefault(equipment_id, []).append(slot)
+    conflicts = [(equipment_id, slots) for equipment_id, slots in item_members.items() if len(slots) > 1]
+    warning = [] if not conflicts else html.Div([
+        html.Strong("Equipment overlap detected"),
+        html.Ul([html.Li(f"{EQUIPMENT_BY_ID.get(item_id, {}).get('item', item_id)} — members {', '.join(map(str, slots))}") for item_id, slots in conflicts]),
+    ])
+    return cards, warning
+
+
+@callback(
+    Output("team-message", "children"), Output("saved-team-dropdown", "value"), Output("team-name", "value"),
+    Output("team-member-1", "value"), Output("team-member-2", "value"),
+    Output("team-member-3", "value"), Output("team-member-4", "value"),
+    Output("confirm-team-overwrite", "displayed"), Output("pending-team-overwrite", "data"),
+    Input("save-team", "n_clicks"), Input("open-team", "n_clicks"), Input("delete-team", "n_clicks"),
+    Input("confirm-team-overwrite", "submit_n_clicks"),
+    State("saved-team-dropdown", "value"), State("team-name", "value"),
+    State("team-member-1", "value"), State("team-member-2", "value"),
+    State("team-member-3", "value"), State("team-member-4", "value"), State("pending-team-overwrite", "data"),
+    prevent_initial_call=True,
+)
+def manage_teams(_save, _open, _delete, _confirm, team_id, team_name, member_1, member_2, member_3, member_4, pending):
+    user_id, _ = user_identity()
+    unchanged = [no_update] * 6
+    if not user_id:
+        return "Sign in to manage teams.", *unchanged, False, None
+    trigger = ctx.triggered_id
+    if trigger == "confirm-team-overwrite":
+        if not pending:
+            return "No team is pending overwrite.", *unchanged, False, None
+        saved_id = save_team(user_id, pending["name"], pending["payload"], int(pending["team_id"]))
+        return f"Team overwritten successfully at {datetime.now().strftime('%I:%M:%S %p').lstrip('0')}.", saved_id, pending["name"], *pending["payload"]["members"], False, None
+    teams = list_teams(user_id)
+    if trigger == "open-team":
+        row = next((row for row in teams if row["id"] == team_id), None)
+        if not row:
+            return "Choose a team to open.", *unchanged, False, None
+        members = (row["team_data"].get("members") or [None] * 4)[:4]
+        return "Team opened.", row["id"], row["name"], *members, False, None
+    if trigger == "delete-team":
+        if not team_id:
+            return "Choose a team to delete.", *unchanged, False, None
+        delete_team(user_id, int(team_id))
+        return "Team deleted.", None, None, None, None, None, None, False, None
+    members = [member_1, member_2, member_3, member_4]
+    if any(member is None for member in members):
+        return "A team must contain four saved characters.", *unchanged, False, None
+    name = (team_name or "Unnamed Team").strip()[:120]
+    payload = {"schema_version": 1, "members": members}
+    match = next((row for row in teams if row["name"].strip().casefold() == name.casefold()), None)
+    if match:
+        return f'A team named "{name}" already exists. Confirm to overwrite it.', *unchanged, True, {"team_id": match["id"], "name": name, "payload": payload}
+    saved_id = save_team(user_id, name, payload)
+    return f"Team saved successfully at {datetime.now().strftime('%I:%M:%S %p').lstrip('0')}.", saved_id, name, *members, False, None
 
 
 @callback(

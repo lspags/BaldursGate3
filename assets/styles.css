@@ -381,6 +381,10 @@ body {
 .optimized-turn-empty { padding: 14px; color: var(--muted); background: rgba(15, 15, 18, .48); border: 1px dashed rgba(209, 173, 97, .28); border-radius: 6px; font-size: .85rem; line-height: 1.6; }
 .account-panel { display: grid; gap: 10px; margin: 0 0 18px; padding: 13px 16px; color: var(--ink); background: rgba(20, 18, 18, .82); border: 1px solid rgba(209, 173, 97, .32); border-radius: 8px; }
 .account-status > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--muted); font-size: .8rem; }
+.workspace-mode-toggle { display: flex; flex-wrap: wrap; gap: 8px; }
+.workspace-mode-toggle label { padding: 8px 13px; color: var(--muted); background: rgba(15,15,18,.55); border: 1px solid rgba(209,173,97,.28); border-radius: 999px; cursor: pointer; }
+.workspace-mode-toggle label:has(input:checked) { color: #fff4d2; background: rgba(126,38,41,.72); border-color: var(--gold); }
+.workspace-mode-toggle input { margin-right: 6px; accent-color: var(--gold); }
 .account-link { color: var(--gold-bright); text-decoration: none; }
 .account-link:hover { text-decoration: underline; }
 .build-controls { display: grid; grid-template-columns: minmax(160px, .7fr) minmax(260px, 1.3fr) repeat(3, auto); gap: 9px; align-items: center; }
@@ -389,6 +393,23 @@ body {
 .build-action-button { padding: 10px 14px; color: #fff8e7; background: #6f552d; border: 1px solid var(--gold); border-radius: 5px; cursor: pointer; }
 .build-delete-button { background: #72282c; }
 .build-message:empty { display: none; }
+.team-builder-view { display: grid; gap: 16px; margin-top: 18px; }
+.team-controls { margin: 0; padding: 14px; background: rgba(20,18,18,.78); border: 1px solid rgba(209,173,97,.28); border-radius: 8px; }
+.team-member-selectors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.team-member-selectors label { display: block; margin-bottom: 6px; color: var(--gold); font-size: .68rem; font-weight: 800; text-transform: uppercase; }
+.team-member-summaries { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; align-items: stretch; }
+.team-member-card { min-width: 0; padding: 17px; color: #4c3526; background: linear-gradient(145deg,#f1e4c8,#d8c29a); border: 1px solid #9a7343; border-radius: 7px; box-shadow: 0 10px 28px rgba(0,0,0,.28); }
+.team-member-card--empty { opacity: .65; }
+.team-card-heading { padding-bottom: 11px; border-bottom: 1px solid rgba(91,59,29,.32); }
+.team-card-heading span { color: #7e2629; font-size: .62rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.team-card-heading h3 { margin: 5px 0 3px; color: #542826; font-family: Georgia,serif; font-size: 1.2rem; }
+.team-card-heading p { margin: 0; font-size: .72rem; font-weight: 750; }
+.team-summary-section { padding: 10px 0; border-bottom: 1px solid rgba(91,59,29,.2); }
+.team-summary-section strong { color: #7e2629; font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; }
+.team-summary-section p { margin: 4px 0 0; font-size: .7rem; line-height: 1.45; overflow-wrap: anywhere; }
+.team-equipment-warning:not(:empty) { padding: 13px 15px; color: #ffe6c4; background: rgba(126,38,41,.72); border: 1px solid #d8a85c; border-radius: 7px; }
+.team-equipment-warning ul { margin: 7px 0 0; padding-left: 20px; }
+.team-message:not(:empty) { padding: 11px 13px; color: var(--gold-bright); background: rgba(20,18,18,.75); border-left: 3px solid var(--gold); }
 .build-message:not(:empty) {
   position: fixed;
   z-index: 10000;
@@ -455,6 +476,7 @@ body {
 .attack-list .sheet-tooltip-term:focus::after { transform: translateY(0); }
 
 @media (max-width: 1220px) {
+  .team-member-selectors, .team-member-summaries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .builder-workspace { grid-template-columns: 1fr; }
   .form-card { grid-template-columns: 1fr; }
   .field--wide { grid-column: auto; }
@@ -469,6 +491,7 @@ body {
 @media (max-width: 520px) {
   .app-shell { width: calc(100% - 20px); padding-top: 24px; }
   .clear-character-button { position: static; margin-top: 14px; }
+  .team-member-selectors, .team-member-summaries { grid-template-columns: 1fr; }
   .leveling-title-row { align-items: flex-start; flex-direction: column; }
   .form-card, .summary-card { padding: 20px; }
   .character-sheet { min-height: 620px; padding: 30px 24px 26px; }

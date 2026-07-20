@@ -48,6 +48,17 @@ class Build(Base):
     owner: Mapped[User] = relationship(back_populates="builds")
 
 
+class Team(Base):
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    team_data: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
 login_manager = LoginManager()
@@ -177,6 +188,33 @@ def load_build(user_id: int, build_id: int) -> dict | None:
 def delete_build(user_id: int, build_id: int) -> bool:
     with SessionLocal() as db:
         row = db.scalar(select(Build).where(Build.id == build_id, Build.user_id == user_id))
+        if not row:
+            return False
+        db.delete(row); db.commit()
+        return True
+
+
+def list_teams(user_id: int) -> list[dict]:
+    with SessionLocal() as db:
+        rows = db.scalars(select(Team).where(Team.user_id == user_id).order_by(Team.updated_at.desc())).all()
+        return [{"id": row.id, "name": row.name, "team_data": dict(row.team_data)} for row in rows]
+
+
+def save_team(user_id: int, name: str, payload: dict, team_id: int | None = None) -> int:
+    with SessionLocal() as db:
+        row = db.scalar(select(Team).where(Team.id == team_id, Team.user_id == user_id)) if team_id else None
+        if row:
+            row.name, row.team_data, row.updated_at = name, payload, datetime.now(timezone.utc)
+        else:
+            row = Team(user_id=user_id, name=name, team_data=payload)
+            db.add(row)
+        db.commit()
+        return row.id
+
+
+def delete_team(user_id: int, team_id: int) -> bool:
+    with SessionLocal() as db:
+        row = db.scalar(select(Team).where(Team.id == team_id, Team.user_id == user_id))
         if not row:
             return False
         db.delete(row); db.commit()
