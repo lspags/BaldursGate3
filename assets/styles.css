@@ -343,6 +343,18 @@ body {
 .equipment-card { margin: 1rem 0 1.4rem; padding: 1.25rem; border: 1px solid rgba(202, 160, 83, .42); border-radius: 8px; background: rgba(20, 18, 18, .76); }
 .equipment-card h3 { margin: 0 0 1rem; color: #e8c77d; }
 .equipment-grid { display: grid; grid-template-columns: repeat(2, minmax(300px, 1fr)); gap: 1rem 1.25rem; }
+.item-location-card { display: grid; gap: 10px; }
+.item-location-card h3 { margin-bottom: 0; }
+.item-location-intro, .item-location-empty { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.5; }
+.item-location-checklist { display: grid; gap: 9px; }
+.item-location-checklist label { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 13px; color: var(--ink); background: rgba(15, 15, 18, .46); border: 1px solid rgba(209, 173, 97, .24); border-radius: 7px; cursor: pointer; }
+.item-location-checklist input { width: 16px; height: 16px; margin-top: 3px; accent-color: var(--gold); }
+.item-location-label { display: grid; gap: 5px; min-width: 0; }
+.item-location-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.item-location-name { font-family: Georgia, serif; font-size: .92rem; }
+.item-location-description { color: var(--muted); font-size: .72rem; line-height: 1.5; overflow-wrap: anywhere; }
+.item-location-link { flex: 0 0 auto; color: var(--gold-bright); font-size: .65rem; font-weight: 800; letter-spacing: .05em; text-decoration: none; text-transform: uppercase; }
+.item-location-link:hover { text-decoration: underline; }
 .equipment-field { min-width: 0; }
 .equipment-dropdown { width: 100%; min-width: 300px; }
 .equipment-dropdown .Select-input { width: calc(100% - 42px); }

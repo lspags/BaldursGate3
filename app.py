@@ -1227,6 +1227,19 @@ app.layout = html.Div(
                                     equipment_field("Ring 2", "equipment-ring-2"),
                                 ], className="equipment-grid"),
                             ], className="equipment-card"),
+                            html.Section([
+                                html.H3("Item location checklist"),
+                                html.P("Locations for the items in your current loadout. Check off each item after you obtain it.", className="item-location-intro"),
+                                dcc.Checklist(
+                                    id="item-location-checklist",
+                                    options=[],
+                                    value=[],
+                                    className="item-location-checklist",
+                                    persistence=True,
+                                    persistence_type="session",
+                                ),
+                                html.P("Select equipment above to build your checklist.", id="item-location-empty", className="item-location-empty"),
+                            ], className="equipment-card item-location-card"),
                         ], className="tab-content leveling-content",
                     ),
                 ),
@@ -1423,6 +1436,7 @@ def selected_build_name(build_id):
     Output("optimizer-lightning-charges", "value", allow_duplicate=True),
     Output("optimizer-use-limited-resources", "value", allow_duplicate=True),
     Output("proficient-equipment-only", "value", allow_duplicate=True),
+    Output("item-location-checklist", "value", allow_duplicate=True),
     Output("confirm-build-overwrite", "displayed"),
     Output("pending-build-overwrite", "data"),
     Output("build-message-dismiss", "disabled", allow_duplicate=True),
@@ -1447,6 +1461,7 @@ def selected_build_name(build_id):
     State("optimizer-active-features", "value"), State("optimizer-elemental-cleaver-type", "value"),
     State("optimizer-lightning-charges", "value"), State("optimizer-use-limited-resources", "value"),
     State("proficient-equipment-only", "value"),
+    State("item-location-checklist", "value"),
     State("pending-build-overwrite", "data"),
     prevent_initial_call=True,
 )
@@ -1455,7 +1470,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                         class_choice_values, class_choice_ids, spell_values, spell_ids, melee_main, melee_off,
                         ranged_main, ranged_off, headwear, armour, handwear, footwear, necklace, ring_1, ring_2,
                         visibility, elevation, attacker_conditions, target_conditions, active_features,
-                        cleaver_type, lightning_charges, limited_resources, proficient_only, pending_overwrite):
+                        cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items, pending_overwrite):
     # The first three restore outputs are ALL-pattern level controls and must
     # return one value per matching component, even when none should change.
     empty_restore = [
@@ -1463,7 +1478,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
         [no_update] * 12,
         [no_update] * 12,
         [no_update] * 12,
-        *([no_update] * 20),
+        *([no_update] * 21),
     ]
     user_id, _ = user_identity()
     if not user_id:
@@ -1506,6 +1521,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             conditions.get("attacker", []), conditions.get("target", []), conditions.get("active_features", []),
             conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
             payload.get("proficient_only", []),
+            payload.get("acquired_items", []),
             False, None,
             False, 0,
         )
@@ -1524,6 +1540,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                        "target": target_conditions, "active_features": active_features, "cleaver_type": cleaver_type,
                        "lightning_charges": lightning_charges, "limited_resources": limited_resources},
         "proficient_only": proficient_only,
+        "acquired_items": list(acquired_items or []),
     }
     matching_build = next(
         (row for row in list_builds(user_id) if row["name"].strip().casefold() == name.casefold()),
@@ -1653,6 +1670,38 @@ def update_subraces(race: str | None, pending_build: dict | None, selected_subra
 )
 def update_human_versatility(race, selected_skill):
     return ({}, selected_skill) if race == "Human" else ({"display": "none"}, None)
+
+
+@callback(
+    Output("item-location-checklist", "options"),
+    Output("item-location-checklist", "value"),
+    Output("item-location-empty", "style"),
+    Input("equipment-melee-main", "value"), Input("equipment-melee-off", "value"),
+    Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
+    Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
+    Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
+    State("item-location-checklist", "value"),
+)
+def update_item_location_checklist(*values):
+    equipment_ids, acquired_items = values[:-1], values[-1] or []
+    selected_ids = list(dict.fromkeys(equipment_id for equipment_id in equipment_ids if equipment_id in EQUIPMENT_BY_ID))
+    options = []
+    for equipment_id in selected_ids:
+        row = EQUIPMENT_BY_ID[equipment_id]
+        location = (row.get("where_to_find") or "Location information is not available.").strip()
+        options.append({
+            "value": equipment_id,
+            "label": html.Div([
+                html.Div([
+                    html.Strong(row["item"], className=f"item-location-name {equipment_rarity_class(row)}"),
+                    html.A("Wiki", href=row.get("source_url") or "https://bg3.wiki/", target="_blank", className="item-location-link"),
+                ], className="item-location-heading"),
+                html.Span(location, className="item-location-description"),
+            ], className="item-location-label"),
+        })
+    retained = [equipment_id for equipment_id in acquired_items if equipment_id in selected_ids]
+    return options, retained, {"display": "none"} if options else {}
 
 
 @callback(
