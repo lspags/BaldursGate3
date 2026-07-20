@@ -1534,11 +1534,24 @@ def restore_dynamic_build_choices(payload, _feat_children, _class_children, _spe
                                   feat_ids, class_ids, spell_ids):
     if not payload:
         return [no_update] * len(feat_ids or []), [no_update] * len(class_ids or []), [no_update] * len(spell_ids or []), no_update
+    feat_records = payload.get("feat_choices") or []
+    class_records = payload.get("class_choices") or []
+    spell_records = payload.get("spell_choices") or []
+
+    def controls_ready(records, current_ids):
+        current_ids = current_ids or []
+        return all(any(record.get("id") == current_id for current_id in current_ids) for record in records)
+
+    restoration_complete = (
+        controls_ready(feat_records, feat_ids)
+        and controls_ready(class_records, class_ids)
+        and controls_ready(spell_records, spell_ids)
+    )
     return (
-        restored_pattern_values(payload.get("feat_choices"), feat_ids),
-        restored_pattern_values(payload.get("class_choices"), class_ids),
-        restored_pattern_values(payload.get("spell_choices"), spell_ids),
-        None,
+        restored_pattern_values(feat_records, feat_ids),
+        restored_pattern_values(class_records, class_ids),
+        restored_pattern_values(spell_records, spell_ids),
+        None if restoration_complete else no_update,
     )
 
 
@@ -1570,9 +1583,10 @@ def clear_leveling(_clicks, class_ids, subclass_ids, feat_ids, feat_choice_ids, 
     Output("subrace-dropdown", "placeholder"),
     Output("subrace-field", "style"),
     Input("race-dropdown", "value"),
+    Input("pending-build-load", "data"),
     State("subrace-dropdown", "value"),
 )
-def update_subraces(race: str | None, selected_subrace: str | None):
+def update_subraces(race: str | None, pending_build: dict | None, selected_subrace: str | None):
     if not race:
         return [], None, True, "Choose a race first", {"display": "none"}
 
@@ -1590,7 +1604,9 @@ def update_subraces(race: str | None, selected_subrace: str | None):
     if not options:
         return [], None, True, "This race has no subrace", {"display": "none"}
     valid_subraces = {option["value"] for option in options}
-    restored_subrace = selected_subrace if selected_subrace in valid_subraces else None
+    pending_subrace = (pending_build or {}).get("subrace")
+    restored_subrace = pending_subrace if pending_subrace in valid_subraces else selected_subrace
+    restored_subrace = restored_subrace if restored_subrace in valid_subraces else None
     return options, restored_subrace, False, "Choose a subrace", {}
 
 
