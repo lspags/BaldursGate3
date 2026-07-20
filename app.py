@@ -1323,7 +1323,8 @@ def restored_pattern_values(records, ids):
 
 def build_notice(message: str):
     """Return a fresh toast node so repeated notices always animate."""
-    return html.Div(message, id=f"build-toast-{time.time_ns()}", className="build-toast-card")
+    nonce = str(time.time_ns())
+    return html.Div(message, id=f"build-toast-{nonce}", key=nonce, className="build-toast-card")
 
 
 @callback(

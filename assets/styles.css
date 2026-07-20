@@ -378,6 +378,10 @@ body {
   top: 22px;
   right: 22px;
   width: min(390px, calc(100vw - 44px));
+  pointer-events: none;
+}
+
+.build-toast-card {
   padding: 14px 18px;
   color: #fff4d2;
   background: linear-gradient(135deg, rgba(63, 47, 28, .98), rgba(31, 27, 27, .98));
@@ -388,10 +392,6 @@ body {
   font-size: .9rem;
   font-weight: 650;
   line-height: 1.35;
-  pointer-events: none;
-}
-
-.build-toast-card {
   animation: build-toast-life 4.5s ease forwards;
 }
 
