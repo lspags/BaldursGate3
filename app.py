@@ -2518,6 +2518,57 @@ def update_spell_choice_status(values, ids):
     return labels, classes
 
 
+def class_granted_spells(level_classes, level_subclasses, class_choice_values):
+    canonical_spells = {row["spell"].lower(): row["spell"] for row in SPELLS}
+    progression = progression_features_by_class(level_classes, level_subclasses)
+    granted = {
+        class_name: [canonical_spells[feature.lower()] for feature in features if feature.lower() in canonical_spells]
+        for class_name, features in progression.items()
+    }
+    if "Pact of the Tome" in (class_choice_values or []):
+        granted.setdefault("Warlock", []).extend(["Guidance", "Vicious Mockery", "Thorn Whip"])
+    return {class_name: list(dict.fromkeys(spells)) for class_name, spells in granted.items() if spells}
+
+
+@callback(
+    Output({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "options"),
+    Input({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"),
+    Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "level-subclass", "level": ALL}, "value"),
+    Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
+)
+def filter_owned_spell_options(values, level_classes, level_subclasses, class_choice_values, ids):
+    values, ids = values or [], ids or []
+    selections = {(item_id["class"], item_id["kind"]): list(value or []) for value, item_id in zip(values, ids)}
+    all_selected = {spell for selected in selections.values() for spell in selected}
+    granted_by_class = class_granted_spells(level_classes, level_subclasses, class_choice_values)
+    all_granted = {spell for spells in granted_by_class.values() for spell in spells}
+    class_levels = Counter(value for value in (level_classes or []) if value)
+    option_sets = []
+    for value, item_id in zip(values, ids):
+        class_name, kind = item_id["class"], item_id["kind"]
+        own_selected = set(value or [])
+        class_level = class_levels.get(class_name, 0)
+        max_spell_level = 0
+        if class_level and class_name in CLASS_PROGRESSIONS:
+            row = CLASS_PROGRESSIONS[class_name][class_level - 1]
+            max_spell_level = max((level for level in range(1, 7) if numeric_progression_value(row, f"spell_slots_{level}")), default=0)
+        class_spells = [row for row in SPELLS if class_name in row["classes"].split("; ")]
+        if kind == "cantrips":
+            candidates = [row for row in class_spells if row["level"] == "C"]
+        elif class_name == "Wizard" and kind == "prepared":
+            learned = set(selections.get(("Wizard", "known"), []))
+            candidates = [row for row in class_spells if row["spell"] in learned or row["spell"] in own_selected]
+        else:
+            candidates = [row for row in class_spells if row["level"].isdigit() and int(row["level"]) <= max_spell_level]
+        unavailable = (all_selected - own_selected) | all_granted
+        if class_name == "Wizard" and kind == "prepared":
+            unavailable -= set(selections.get(("Wizard", "known"), []))
+        option_sets.append([spell_option(row) for row in candidates if row["spell"] not in unavailable or row["spell"] in own_selected])
+    return option_sets
+
+
 def combat_action_tooltips(actions, descriptions=None):
     descriptions = descriptions or {}
     rendered = []
