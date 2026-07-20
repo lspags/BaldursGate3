@@ -1,0 +1,7 @@
+fighting_style,available_to,description,source_url
+Archery,"Fighter; Ranger; Champion Fighter","You gain a +2 bonus to attack rolls you make with ranged weapons.",https://bg3.wiki/wiki/Archery
+Defence,"Fighter; Paladin; Ranger; Champion Fighter","You gain a +1 bonus to Armour Class while wearing armour.",https://bg3.wiki/wiki/Defence
+Duelling,"Fighter; Paladin; Ranger; College of Swords Bard; Champion Fighter","When wielding a melee weapon that is not Two-Handed in one hand and no weapon in the other, you deal 2 additional damage with that weapon.",https://bg3.wiki/wiki/Duelling
+Great Weapon Fighting,"Fighter; Paladin; Champion Fighter","When you roll a 1 or 2 on a damage die for a Two-Handed melee weapon attack, that die is rerolled once.",https://bg3.wiki/wiki/Great_Weapon_Fighting
+Protection,"Fighter; Paladin; Champion Fighter","While holding a shield, use your reaction to impose Disadvantage on an enemy attacking a nearby ally you can see.",https://bg3.wiki/wiki/Protection
+Two-Weapon Fighting,"Fighter; Ranger; College of Swords Bard; Champion Fighter","When you make an off-hand attack, add your Ability Score Modifier to the attack's damage.",https://bg3.wiki/wiki/Two-Weapon_Fighting

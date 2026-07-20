@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+
+# Dash runtime output
+dash.stdout.log
+dash.stderr.log
+
+# Local scraper caches
+.spell_description_cache.clixml
+.where_to_find_cache.clixml
+
+# Local agent metadata
+.agents/
