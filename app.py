@@ -897,9 +897,15 @@ app.layout = html.Div(
                 html.P("BALDUR'S GATE 3", className="eyebrow"),
                 html.H1("Character Builder"),
                 html.P("Build the foundation of your next adventurer.", className="subtitle"),
+                dcc.ConfirmDialogProvider(
+                    children=html.Button("Clear Character", id="clear-character", n_clicks=0, className="clear-character-button"),
+                    id="confirm-clear-character",
+                    message="Clear every selection in the current character? Saved builds and your account will not be deleted.",
+                ),
             ],
             className="hero",
         ),
+        dcc.Store(id="clear-character-sink", storage_type="memory"),
         html.Section([
             dcc.Interval(id="account-refresh", interval=3_600_000, n_intervals=0, max_intervals=1),
             html.Div(id="account-status", className="account-status"),
@@ -1310,6 +1316,21 @@ app.layout = html.Div(
         ),
     ],
     className="app-shell",
+)
+
+
+app.clientside_callback(
+    """
+    function(nClicks) {
+        if (!nClicks) return window.dash_clientside.no_update;
+        window.sessionStorage.clear();
+        window.location.reload();
+        return Date.now();
+    }
+    """,
+    Output("clear-character-sink", "data"),
+    Input("clear-character", "n_clicks"),
+    prevent_initial_call=True,
 )
 
 
