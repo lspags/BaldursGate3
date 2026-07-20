@@ -334,6 +334,18 @@ body {
   border: 1px solid rgba(91, 59, 29, 0.52);
   border-radius: 3px;
 }
+.sheet-panel .sheet-vitals-grid .sheet-initiative-row {
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+.sheet-vitals-grid .sheet-initiative-row > span {
+  min-width: 0;
+}
+.sheet-vitals-grid .sheet-initiative-row > span:last-child {
+  padding-left: 6px;
+  text-align: right;
+}
 .sheet-vitals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .sheet-vitals-grid .sheet-initiative-row { margin-top: 0; }
 .sheet-ac-row { border-color: rgba(126, 38, 41, 0.58); }
