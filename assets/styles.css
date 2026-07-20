@@ -388,6 +388,13 @@ body {
   font-size: .9rem;
   font-weight: 650;
   line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.build-message.toast-visible:not(:empty) {
+  opacity: 1;
+  pointer-events: auto;
   animation: build-toast-in .22s ease-out;
 }
 
