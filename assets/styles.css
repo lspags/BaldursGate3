@@ -371,7 +371,30 @@ body {
 .build-dropdown { min-width: 0; }
 .build-action-button { padding: 10px 14px; color: #fff8e7; background: #6f552d; border: 1px solid var(--gold); border-radius: 5px; cursor: pointer; }
 .build-delete-button { background: #72282c; }
-.build-message { min-height: 1em; color: var(--gold-bright); font-size: .76rem; }
+.build-message:empty { display: none; }
+.build-message:not(:empty) {
+  position: fixed;
+  z-index: 10000;
+  top: 22px;
+  right: 22px;
+  width: min(390px, calc(100vw - 44px));
+  padding: 14px 18px;
+  color: #fff4d2;
+  background: linear-gradient(135deg, rgba(63, 47, 28, .98), rgba(31, 27, 27, .98));
+  border: 1px solid var(--gold-bright);
+  border-left: 5px solid var(--gold-bright);
+  border-radius: 7px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, .58);
+  font-size: .9rem;
+  font-weight: 650;
+  line-height: 1.35;
+  animation: build-toast-in .22s ease-out;
+}
+
+@keyframes build-toast-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .optimized-turn-result { display: grid; gap: 14px; }
 .optimizer-totals { display: grid; grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 10px; }
 .optimizer-totals > div { display: grid; gap: 4px; padding: 12px; text-align: center; background: rgba(15, 15, 18, .62); border: 1px solid rgba(209, 173, 97, .3); border-radius: 6px; }
