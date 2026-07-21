@@ -3174,6 +3174,8 @@ def optimizer_active_feature_options(class_values, subclass_values, choice_value
     counts = Counter(value for value in class_values or [] if value)
     subclasses = {(class_name, subclass) for class_name, subclass in zip(class_values or [], subclass_values or []) if class_name and subclass}
     options = []
+    if counts.get("Rogue"):
+        options.append({"label": " Sneak Attack available", "value": "Sneak Attack"})
     if counts.get("Barbarian"):
         options.append({"label": " Rage active", "value": "Rage"})
     if counts.get("Barbarian", 0) >= 6 and ("Barbarian", "Giant") in subclasses:
@@ -3260,6 +3262,8 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         active_features.discard("Elemental Cleaver")
     if ("Warlock", "The Hexblade") not in selected_subclasses:
         active_features -= {"Hexed Weapon", "Hexblade's Curse"}
+    if not counts.get("Rogue"):
+        active_features.discard("Sneak Attack")
     level = len(active_classes)
     modifiers = final_ability_modifiers(ability_data, feat_effects, equipment_effects)
     selected_choices = [item for value in class_choice_values or [] for item in (value if isinstance(value, list) else [value]) if item]
@@ -3330,7 +3334,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
                 melee_attack = attack_data
 
     rogue_level = counts.get("Rogue", 0)
-    sneak_general = bool({"Advantage", "Hidden", "Invisible"} & set(attacker_conditions or [])) or bool({"Threatened by Ally", "Restrained"} & set(target_conditions or []))
+    sneak_general = "Sneak Attack" in active_features or bool({"Advantage", "Hidden", "Invisible"} & set(attacker_conditions or [])) or bool({"Threatened by Ally", "Restrained"} & set(target_conditions or []))
     sneak_context = sneak_general or "Prone" in (target_conditions or [])
     if rogue_level and sneak_context:
         sneak_expression = f"{(rogue_level + 1) // 2}d6"
