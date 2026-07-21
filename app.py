@@ -2530,20 +2530,55 @@ def class_granted_spells(level_classes, level_subclasses, class_choice_values):
     return {class_name: list(dict.fromkeys(spells)) for class_name, spells in granted.items() if spells}
 
 
+def racial_granted_spells(race, subrace, character_level):
+    race_row = next((row for row in RACES if row["race"] == race and (not subrace or row["subrace"] == subrace)), None)
+    if not race_row:
+        return []
+    features = " ".join([race_row.get("race_features", ""), race_row.get("subrace_features", "")])
+    canonical = {row["spell"].lower(): row["spell"] for row in SPELLS}
+    granted = []
+    for trait in RACIAL_TRAITS:
+        if not re.search(re.escape(trait["trait"]), features, re.IGNORECASE):
+            continue
+        description = trait.get("description", "")
+        matches = []
+        for lower_name, spell_name in canonical.items():
+            match = re.search(rf"\b{re.escape(lower_name)}\b", description, re.IGNORECASE)
+            if match:
+                matches.append((match.start(), match.end(), spell_name))
+        if "Enlarge/Reduce" in canonical.values() and not any(spell == "Enlarge/Reduce" for _, _, spell in matches):
+            match = re.search(r"\bEnlarge\b", description, re.IGNORECASE)
+            if match:
+                matches.append((match.start(), match.end(), "Enlarge/Reduce"))
+        for index, (start, end, spell_name) in enumerate(sorted(matches)):
+            next_start = sorted(matches)[index + 1][0] if index + 1 < len(matches) else len(description)
+            nearby = description[end:next_start]
+            level_match = re.search(r"(?:at|from) level\s+(\d+)", nearby, re.IGNORECASE)
+            at_will = re.search(r"at-will spell", nearby, re.IGNORECASE)
+            if not level_match and not at_will:
+                continue
+            required_level = int(level_match.group(1)) if level_match else 1
+            if character_level >= required_level:
+                granted.append(spell_name)
+    return list(dict.fromkeys(granted))
+
+
 @callback(
     Output({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "options"),
     Input({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"),
     Input({"type": "level-class", "level": ALL}, "value"),
     Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
     State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
 )
-def filter_owned_spell_options(values, level_classes, level_subclasses, class_choice_values, ids):
+def filter_owned_spell_options(values, level_classes, level_subclasses, class_choice_values, race, subrace, ids):
     values, ids = values or [], ids or []
     selections = {(item_id["class"], item_id["kind"]): list(value or []) for value, item_id in zip(values, ids)}
     all_selected = {spell for selected in selections.values() for spell in selected}
     granted_by_class = class_granted_spells(level_classes, level_subclasses, class_choice_values)
-    all_granted = {spell for spells in granted_by_class.values() for spell in spells}
+    racial_grants = racial_granted_spells(race, subrace, len([value for value in (level_classes or []) if value]))
+    all_granted = {spell for spells in granted_by_class.values() for spell in spells} | set(racial_grants)
     class_levels = Counter(value for value in (level_classes or []) if value)
     option_sets = []
     for value, item_id in zip(values, ids):
@@ -3543,6 +3578,7 @@ def render_spell_slots(level_classes, level_subclasses, feat_values):
     Input({"type": "level-class", "level": ALL}, "value"),
     Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
     Input("abilities-store", "data"), Input("feat-effects-store", "data"),
     Input("equipment-effects-store", "data"),
     Input("equipment-melee-main", "value"), Input("equipment-melee-off", "value"),
@@ -3552,21 +3588,16 @@ def render_spell_slots(level_classes, level_subclasses, feat_values):
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
     State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
 )
-def render_sheet_spells(values, level_classes, level_subclasses, class_choice_values, ability_data, feat_effects, equipment_effects,
+def render_sheet_spells(values, level_classes, level_subclasses, class_choice_values, race, subrace, ability_data, feat_effects, equipment_effects,
                         melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
                         handwear_id, footwear_id, necklace_id, ring_1_id, ring_2_id, ids):
     selections = {}
     for value, item_id in zip(values or [], ids or []):
         selections[(item_id["class"], item_id["kind"])] = list(value or [])[:int(item_id["limit"])]
-    canonical_spells = {row["spell"].lower(): row["spell"] for row in SPELLS}
-    progression = progression_features_by_class(level_classes, level_subclasses)
-    granted_by_class = {
-        class_name: [canonical_spells[feature.lower()] for feature in features if feature.lower() in canonical_spells]
-        for class_name, features in progression.items()
-    }
-    if "Pact of the Tome" in (class_choice_values or []):
-        granted_by_class.setdefault("Warlock", []).extend(["Guidance", "Vicious Mockery", "Thorn Whip"])
-    granted_by_class = {class_name: list(dict.fromkeys(spells)) for class_name, spells in granted_by_class.items() if spells}
+    granted_by_class = class_granted_spells(level_classes, level_subclasses, class_choice_values)
+    racial_grants = racial_granted_spells(race, subrace, len([value for value in (level_classes or []) if value]))
+    if racial_grants:
+        granted_by_class["Racial"] = racial_grants
     classes = list(dict.fromkeys([item_id["class"] for item_id in ids or []] + list(granted_by_class)))
     modifiers = final_ability_modifiers(ability_data, feat_effects, equipment_effects)
     character_level = len([value for value in level_classes or [] if value])
