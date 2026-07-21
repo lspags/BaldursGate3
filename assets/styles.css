@@ -450,6 +450,11 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 .optimized-turn-result { display: grid; gap: 14px; }
+.optimizer-results-stack { display: grid; gap: 16px; }
+.crit-result-card { padding-top: 16px; border-top: 1px solid rgba(209,173,97,.32); }
+.crit-plan-summary { padding: 12px 14px; background: rgba(15,15,18,.42); border: 1px solid rgba(209,173,97,.24); border-radius: 6px; }
+.crit-plan-summary > strong { color: var(--gold-bright); font-family: Georgia,serif; }
+.crit-plan-summary > p { margin: 5px 0 0; color: var(--muted); font-size: .76rem; line-height: 1.5; }
 .optimizer-totals { display: grid; grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 10px; }
 .optimizer-totals > div { display: grid; gap: 4px; padding: 12px; text-align: center; background: rgba(15, 15, 18, .62); border: 1px solid rgba(209, 173, 97, .3); border-radius: 6px; }
 .optimizer-totals strong { color: var(--gold-bright); font-family: Georgia, serif; font-size: 1.55rem; }

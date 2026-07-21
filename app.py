@@ -2890,6 +2890,62 @@ def optimizer_result_card(sequence, total, limitations, mode, inflicted_conditio
     ], className="optimized-turn-result")
 
 
+def optimizer_attack_count(name, detail, cantrip_scale=1):
+    text = f"{name} {detail}"
+    if "Flurry of Blows" in text:
+        return 2
+    multiplier = re.search(r"(?:×|Ã—|x)(\d+)", name)
+    if multiplier and any(term in text for term in ("Attack", "Unarmed")):
+        return int(multiplier.group(1))
+    if any(term in text for term in ("Melee Attack", "Ranged Attack", "Unarmed Attack", "Off-Hand", "Booming Blade", "Smite", "Strike")):
+        return 1
+    spell = next((row for row in SPELLS if row["spell"] in name), None)
+    if spell and "attack roll" in spell.get("attack_save", "").lower():
+        return cantrip_scale if spell["spell"] == "Eldritch Blast" else 1
+    return 0
+
+
+def critical_dice_bonus(detail):
+    expressions = re.findall(r"\b\d+d\d+\b", detail or "", re.IGNORECASE)
+    return tuple(sum(damage_expression_stats(expression)[index] for expression in expressions) for index in range(3))
+
+
+def critical_probability(threshold, advantage=False):
+    base = max(0.05, min(1.0, (21 - threshold) / 20))
+    return 1 - (1 - base) ** 2 if advantage else base
+
+
+def crit_result_card(normal_sequence, crit_sequence, threshold, advantage, crit_sources, crit_riders):
+    per_attack = critical_probability(threshold, advantage)
+
+    def sequence_stats(sequence):
+        attacks = sum(step.get("attack_count", 0) for step in sequence)
+        no_crit = 1.0
+        for step in sequence:
+            no_crit *= (1 - step.get("crit_chance", per_attack)) ** step.get("attack_count", 0)
+        chance = 1 - no_crit if attacks else 0
+        base_mean = sum(step["mean"] for step in sequence)
+        bonus_mean = sum(step.get("crit_bonus", (0, 0, 0))[2] * step.get("attack_count", 0) for step in sequence)
+        return attacks, chance, base_mean, bonus_mean
+
+    normal_attacks, normal_chance, normal_mean, normal_bonus = sequence_stats(normal_sequence)
+    crit_attacks, crit_chance, crit_mean, crit_bonus = sequence_stats(crit_sequence)
+    return html.Div([
+        html.Div([html.P("CRITICAL HIT MODEL", className="eyebrow"), html.H3("Crit Calculator")], className="condition-heading"),
+        html.Div([
+            html.Div([html.Span("Base critical range", className="optimizer-total-label"), html.Strong(f"{threshold}–20")]),
+            html.Div([html.Span("Base per attack", className="optimizer-total-label"), html.Strong(f"{per_attack:.1%}")]),
+            html.Div([html.Span("Normal plan: ≥1 crit", className="optimizer-total-label"), html.Strong(f"{normal_chance:.1%}")]),
+        ], className="optimizer-totals"),
+        html.P(("Advantage applied. " if advantage else "Normal attack rolls. ") + f"Sources: {', '.join(crit_sources) if crit_sources else 'natural 20 only'}." , className="optimizer-mode"),
+        html.Div([html.Strong("Normal damage plan"), html.P(f"{normal_attacks} attack roll(s); mean {normal_mean:.1f}; estimated mean on a critical outcome {normal_mean + normal_bonus:.1f}.")], className="crit-plan-summary"),
+        html.Div([html.Strong("Crit-optimized alternative"), html.P(f"{crit_attacks} attack roll(s); {crit_chance:.1%} chance of at least one critical hit; base mean {crit_mean:.1f}; estimated mean with doubled critical dice {crit_mean + crit_bonus:.1f}."),
+                  html.Ol([html.Li(step["name"]) for step in crit_sequence], className="optimizer-sequence")], className="crit-plan-summary"),
+        html.P(f"Critical riders considered: {', '.join(crit_riders) if crit_riders else 'standard doubled damage dice only'}.", className="condition-help"),
+        html.P("Estimates assume attacks hit and report the probability of rolling at least one critical hit; enemy AC and confirmation of conditional riders are not included.", className="condition-help"),
+    ], className="optimized-turn-result crit-result-card")
+
+
 def weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand_present=False, thrown=False,
                               proficient=True, monk_weapon=False, elevation="Level", active_features=None):
     active_features = set(active_features or [])
@@ -3132,6 +3188,7 @@ def show_lightning_charge_selector(equipment_effects):
     Output("optimized-turn", "children"),
     Input("optimizer-use-limited-resources", "value"),
     Input({"type": "level-class", "level": ALL}, "value"), Input({"type": "level-subclass", "level": ALL}, "value"),
+    Input({"type": "level-feat", "level": ALL}, "value"), Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
     Input("abilities-store", "data"), Input("feat-effects-store", "data"),
     Input("equipment-effects-store", "data"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
@@ -3142,6 +3199,8 @@ def show_lightning_charge_selector(equipment_effects):
     Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
     Input({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"),
+    Input("turn-attacker-conditions", "value"),
+    Input("turn-visibility", "value"),
     Input("turn-target-conditions", "value"),
     Input("optimizer-active-features", "value"),
     Input("optimizer-elemental-cleaver-type", "value"),
@@ -3149,9 +3208,9 @@ def show_lightning_charge_selector(equipment_effects):
     State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
     State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
 )
-def optimize_turn(use_limited, class_values, subclass_values, ability_data, feat_effects, equipment_effects, class_choice_values,
+def optimize_turn(use_limited, class_values, subclass_values, feat_values, race, subrace, ability_data, feat_effects, equipment_effects, class_choice_values,
                   melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
-                  handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id, spell_values, target_conditions,
+                  handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id, spell_values, attacker_conditions, visibility, target_conditions,
                   active_features, elemental_cleaver_type, lightning_charges, class_choice_ids, spell_ids):
     active_classes = [value for value in class_values or [] if value]
     if not active_classes:
@@ -3451,8 +3510,86 @@ def optimize_turn(use_limited, class_values, subclass_values, ability_data, feat
     equipped_rows = [EQUIPMENT_BY_ID.get(equipment_id) for equipment_id in equipped_ids if equipment_id]
     total, equipment_conditions = apply_charge_and_reverberation_effects(sequence, equipped_rows, lightning_charges)
 
+    def candidate_steps(candidate, prefix):
+        components = candidate.get("components") or [{"name": candidate["name"], "stats": candidate["stats"], "detail": candidate.get("detail", "")}]
+        return [{
+            "name": f"{prefix}{chr(ord('a') + index) if len(components) > 1 else ''}: {component['name']}",
+            "min": component["stats"][0], "max": component["stats"][1], "mean": component["stats"][2],
+            "detail": component.get("detail", ""),
+        } for index, component in enumerate(components)]
+
+    crit_sequence = []
+    crit_action_uses = Counter()
+    for index in range(actions):
+        eligible = [item for item in action_candidates if crit_action_uses[item["name"]] < item.get("max_per_turn", actions)]
+        if not eligible:
+            break
+        best = max(eligible, key=lambda item: (sum(optimizer_attack_count(c.get("name", item["name"]), c.get("detail", item.get("detail", "")), cantrip_scale) for c in (item.get("components") or [item])), item["stats"][2]))
+        crit_action_uses[best["name"]] += 1
+        crit_sequence.extend(candidate_steps(best, f"Action {index + 1}"))
+    if bonus_candidates:
+        best_crit_bonus = max(bonus_candidates, key=lambda item: (optimizer_attack_count(item["name"], item.get("detail", ""), cantrip_scale), item["stats"][2]))
+        for index in range(bonus_actions):
+            crit_sequence.extend(candidate_steps(best_crit_bonus, f"Bonus Action {index + 1}"))
+
+    crit_sources, crit_riders = [], []
+    threshold = 20
+    if "Improved Critical Hit" in features:
+        threshold -= 1; crit_sources.append("Champion: Improved Critical Hit")
+    if "Hexblade's Curse" in active_features:
+        threshold -= 1; crit_sources.append("Hexblade's Curse")
+    item_names = {row["item"] for row in equipped_rows if row}
+    for row in equipped_rows:
+        special = row.get("special", "")
+        if re.search(r"number you need to roll (?:a )?Critical Hit.*reduced by (?:1|one)|reduce the number you need to roll a Critical Hit.*by 1", special, re.IGNORECASE):
+            conditional = "while obscured" in special.lower() or "while hiding" in special.lower()
+            active = not conditional or visibility in {"Lightly Obscured", "Heavily Obscured"} or bool({"Hidden", "Invisible"} & set(attacker_conditions or []))
+            if active:
+                threshold -= 1; crit_sources.append(row["item"])
+    if "Unseen Menace" in item_names:
+        threshold = min(threshold, 19); crit_sources.append("Unseen Menace (its attacks)")
+    if "Duellist's Prerogative" in item_names and not melee_off_id:
+        threshold = min(threshold, 19); crit_sources.append("Duellist's Prerogative (empty off-hand)")
+    spell_sniper = "Spell Sniper" in (feat_values or [])
+    if spell_sniper:
+        crit_sources.append("Spell Sniper (spell attacks only)")
+    advantage = bool({"Advantage", "Hidden", "Invisible"} & set(attacker_conditions or [])) or bool({"Prone", "Restrained"} & set(target_conditions or []))
+    savage_critical = race == "Half-Orc"
+    brutal_critical = "Brutal Critical" in features
+    if savage_critical: crit_riders.append("Savage Attacks (+1 weapon die)")
+    if brutal_critical: crit_riders.append("Brutal Critical (+1 weapon die)")
+    if "Craterflesh Gloves" in item_names: crit_riders.append("Craterflesh Gloves (+1d6 Force)")
+    if item_names & {"Dolor Amarus", "Vicious Battleaxe", "Vicious Shortbow"}: crit_riders.append("Dolor Amarus (+7)")
+    if "Sword of Life Stealing" in item_names: crit_riders.append("Life Stealing Critical (+10 Necrotic)")
+
+    def annotate_crit_steps(steps):
+        for step in steps:
+            count = optimizer_attack_count(step["name"], step.get("detail", ""), cantrip_scale)
+            step["attack_count"] = count
+            spell_attack = next((row for row in SPELLS if row["spell"] in step["name"] and "attack roll" in row.get("attack_save", "").lower()), None)
+            step_threshold = max(2, threshold - (1 if spell_sniper and spell_attack else 0))
+            step["crit_chance"] = critical_probability(step_threshold, advantage)
+            bonus = critical_dice_bonus(step.get("detail", "")) if count else (0, 0, 0)
+            if count and (savage_critical or brutal_critical) and any(term in step["name"] for term in ("Attack", "Unarmed", "Blade", "Smite", "Strike")):
+                first_die = re.search(r"\b\d+d\d+\b", step.get("detail", ""))
+                if first_die:
+                    extra = damage_expression_stats(first_die.group())
+                    multiplier = int(savage_critical) + int(brutal_critical)
+                    bonus = add_damage_stats(bonus, tuple(value * multiplier for value in extra))
+            if count and "Craterflesh Gloves" in item_names:
+                bonus = add_damage_stats(bonus, damage_expression_stats("1d6"))
+            if count and item_names & {"Dolor Amarus", "Vicious Battleaxe", "Vicious Shortbow"}:
+                bonus = tuple(value + 7 for value in bonus)
+            if count and "Sword of Life Stealing" in step["name"]:
+                bonus = tuple(value + 10 for value in bonus)
+            step["crit_bonus"] = bonus
+        return steps
+
+    sequence = annotate_crit_steps(sequence)
+    crit_sequence = annotate_crit_steps(crit_sequence)
+
     limitations = [
-        "Assumes every attack hits, no critical hits, and one target.",
+        "The base damage plan assumes every attack hits; critical-hit odds are reported separately.",
         "Enemy Armour Class, saving-throw success rates, resistances, immunities, and vulnerability are not yet included.",
         "Spell upcasting, damage-over-time, areas hitting multiple targets, and concentration value are not yet optimized.",
         "Conditional equipment riders and most once-per-turn damage riders are not yet included.",
@@ -3465,7 +3602,10 @@ def optimize_turn(use_limited, class_values, subclass_values, ability_data, feat
         mode += f"; active: {', '.join(sorted(active_features))}"
     inflicted_conditions = possible_conditions_for_sequence(sequence, equipped_rows, active_features)
     inflicted_conditions = list({(item["condition"], item["source"]): item for item in inflicted_conditions + equipment_conditions}.values())
-    return optimizer_result_card(sequence, total, limitations, mode, inflicted_conditions)
+    return html.Div([
+        optimizer_result_card(sequence, total, limitations, mode, inflicted_conditions),
+        crit_result_card(sequence, crit_sequence, max(2, threshold), advantage, crit_sources, crit_riders),
+    ], className="optimizer-results-stack")
 
 
 @callback(
