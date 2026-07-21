@@ -92,6 +92,29 @@ def equipment_earliest_act(row):
     return min(candidate_acts) if candidate_acts else 1
 ABILITIES = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
 DAMAGE_TYPES = ["Acid", "Bludgeoning", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Piercing", "Poison", "Psychic", "Radiant", "Slashing", "Thunder"]
+WILD_SHAPE_FORMS = {
+    "Badger": {"level": 2, "actions": [("Claws", "2d4+2", "Slashing"), ("Bite", "1d6+2", "Piercing")]},
+    "Cat": {"level": 2, "actions": [("Claws", "1", "Slashing")]},
+    "Spider": {"level": 2, "actions": [("Bite", "1d8+3;1d10", "Piercing, Poison")]},
+    "Wolf": {"level": 2, "actions": [("Bite", "2d4+3", "Piercing"), ("Exposing Bite", "2d4+3", "Piercing")]},
+    "Bear": {"level": 2, "moon": True, "actions": [("Claws", "2d4+4", "Slashing")]},
+    "Deep Rothé": {"level": 4, "actions": [("Gore", "1d8+4", "Piercing"), ("Charge", "1d8+4", "Piercing")]},
+    "Dire Raven": {"level": 4, "moon": True, "actions": [("Beak", "1d6+2", "Piercing"), ("Rend Vision", "1d6+2", "Piercing")]},
+    "Panther": {"level": 6, "actions": [("Jugular Strike", "1d6+2", "Piercing")], "bonus": [("Pounce", "1d6+2", "Bludgeoning")]},
+    "Owlbear": {"level": 6, "actions": [("Claws", "1d8+5", "Slashing"), ("Rupture", "1d8", "Bludgeoning")], "bonus": [("Crushing Flight", "1d8", "Bludgeoning")]},
+    "Sabre-Toothed Tiger": {"level": 8, "moon": True, "actions": [("Bite", "2d6+4", "Piercing"), ("Jugular Strike", "2d6+4", "Piercing"), ("Shred Armour", "2d6+4", "Slashing")]},
+    "Dilophosaurus": {"level": 10, "actions": [("Bite", "1d10+4", "Piercing"), ("Corrosive Spit", "2d8+4", "Acid")], "bonus": [("Pounce", "2d6+4", "Bludgeoning")]},
+    "Air Myrmidon": {"level": 10, "moon": True, "myrmidon": True, "actions": [("Electrified Flail", "1d8+4;1d10", "Bludgeoning, Lightning"), ("Raging Vortex", "2d8", "Lightning")]},
+    "Earth Myrmidon": {"level": 10, "moon": True, "myrmidon": True, "actions": [("Grounded Thunder Strike", "1d10+4;1d10", "Bludgeoning, Thunder")], "bonus": [("Muck to Metal", "1d8", "Acid")]},
+    "Fire Myrmidon": {"level": 10, "moon": True, "myrmidon": True, "actions": [("Scorching Strike", "1d6+4;1d6", "Slashing, Fire"), ("Cinderous Swipe", "2d6", "Fire")]},
+    "Water Myrmidon": {"level": 10, "moon": True, "myrmidon": True, "actions": [("Trident Strike", "1d8+4;1d6", "Piercing, Cold"), ("Explosive Icicle", "3d8", "Cold")]},
+}
+WILD_SHAPE_STRENGTH = {
+    "Badger": 14, "Cat": 6, "Spider": 14, "Wolf": 17, "Bear": 19,
+    "Deep Rothé": 18, "Dire Raven": 6, "Panther": 14, "Owlbear": 20,
+    "Sabre-Toothed Tiger": 18, "Dilophosaurus": 19, "Air Myrmidon": 18,
+    "Earth Myrmidon": 18, "Fire Myrmidon": 13, "Water Myrmidon": 18,
+}
 POINT_BUY_COSTS = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
 FIXED_FEAT_ABILITIES = {
     "Actor": ("Charisma", 1), "Durable": ("Constitution", 1),
@@ -1185,6 +1208,15 @@ app.layout = html.Div(
                                         className="rich-dropdown", persistence=True, persistence_type="session",
                                     )], className="field"),
                                     html.Div([
+                                        html.Label("Wild Shape form"),
+                                        dcc.Dropdown(
+                                            id="optimizer-wild-shape", value=None, clearable=True,
+                                            placeholder="No Wild Shape",
+                                            className="rich-dropdown", persistence=True, persistence_type="session",
+                                        ),
+                                        html.P("Select a form to optimize using only that form's available attacks.", className="condition-help"),
+                                    ], id="optimizer-wild-shape-field", className="field", style={"display": "none"}),
+                                    html.Div([
                                         html.Label("Active features"),
                                         dcc.Checklist(id="optimizer-active-features", options=[], value=[],
                                                       className="optimizer-resource-toggle",
@@ -1666,6 +1698,7 @@ def selected_build_name(build_id):
     Output("turn-visibility", "value", allow_duplicate=True), Output("turn-elevation", "value", allow_duplicate=True),
     Output("turn-attacker-conditions", "value", allow_duplicate=True), Output("turn-target-conditions", "value", allow_duplicate=True),
     Output("optimizer-active-features", "value", allow_duplicate=True),
+    Output("optimizer-wild-shape", "value", allow_duplicate=True),
     Output("optimizer-elemental-cleaver-type", "value", allow_duplicate=True),
     Output("optimizer-lightning-charges", "value", allow_duplicate=True),
     Output("optimizer-use-limited-resources", "value", allow_duplicate=True),
@@ -1694,7 +1727,7 @@ def selected_build_name(build_id):
     State("equipment-necklace", "value"), State("equipment-ring-1", "value"), State("equipment-ring-2", "value"),
     State("turn-visibility", "value"), State("turn-elevation", "value"),
     State("turn-attacker-conditions", "value"), State("turn-target-conditions", "value"),
-    State("optimizer-active-features", "value"), State("optimizer-elemental-cleaver-type", "value"),
+    State("optimizer-active-features", "value"), State("optimizer-wild-shape", "value"), State("optimizer-elemental-cleaver-type", "value"),
     State("optimizer-lightning-charges", "value"), State("optimizer-use-limited-resources", "value"),
     State("proficient-equipment-only", "value"),
     State("item-location-checklist", "value"),
@@ -1707,7 +1740,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                         class_choice_values, class_choice_ids, spell_values, spell_ids, melee_main, melee_off,
                         ranged_main, ranged_off, headwear, armour, handwear, footwear, cape, necklace, ring_1, ring_2,
                         visibility, elevation, attacker_conditions, target_conditions, active_features,
-                        cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items, act_loadouts, equipment_act, pending_overwrite):
+                        wild_shape, cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items, act_loadouts, equipment_act, pending_overwrite):
     # The first three restore outputs are ALL-pattern level controls and must
     # return one value per matching component, even when none should change.
     empty_restore = [
@@ -1715,7 +1748,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
         [no_update] * 12,
         [no_update] * 12,
         [no_update] * 12,
-        *([no_update] * 24),
+        *([no_update] * 25),
     ]
     user_id, _ = user_identity()
     if not user_id:
@@ -1756,7 +1789,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             equipment.get("cape"), equipment.get("necklace"), equipment.get("ring_1"), equipment.get("ring_2"),
             conditions.get("visibility", "No condition"), conditions.get("elevation", "No condition"),
             conditions.get("attacker", []), conditions.get("target", []), conditions.get("active_features", []),
-            conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
+            conditions.get("wild_shape"), conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
             payload.get("proficient_only", []),
             payload.get("acquired_items", []),
             payload.get("equipment_loadouts", {"active_act": payload.get("equipment_act", 1), "loadouts": {str(payload.get("equipment_act", 1)): {key.replace("_", "-"): value for key, value in equipment.items()}}}),
@@ -1776,7 +1809,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                       "ranged_off": ranged_off, "headwear": headwear, "armour": armour, "handwear": handwear,
                       "footwear": footwear, "cape": cape, "necklace": necklace, "ring_1": ring_1, "ring_2": ring_2},
         "conditions": {"visibility": visibility, "elevation": elevation, "attacker": attacker_conditions,
-                       "target": target_conditions, "active_features": active_features, "cleaver_type": cleaver_type,
+                       "target": target_conditions, "active_features": active_features, "wild_shape": wild_shape, "cleaver_type": cleaver_type,
                        "lightning_charges": lightning_charges, "limited_resources": limited_resources},
         "proficient_only": proficient_only,
         "acquired_items": list(acquired_items or []),
@@ -2859,7 +2892,7 @@ def possible_conditions_for_sequence(sequence, equipped_rows, active_features):
     results, seen = [], set()
     for step in sequence:
         name = step["name"]
-        sources = []
+        sources = [(name, step.get("detail", ""))]
         for row in SPELLS:
             if row["spell"] in name:
                 sources.append((row["spell"], f"{row.get('description', '')} {row.get('damage_effect', '')}"))
@@ -3010,7 +3043,7 @@ def optimizer_attack_count(name, detail, cantrip_scale=1):
     multiplier = re.search(r"(?:×|Ã—|x)(\d+)", name)
     if multiplier and any(term in text for term in ("Attack", "Unarmed", "Throwing")):
         return int(multiplier.group(1))
-    if any(term in text for term in ("Melee Attack", "Ranged Attack", "Throwing Attack", "Unarmed Attack", "Off-Hand", "Booming Blade", "Smite", "Strike")):
+    if any(term in text for term in ("Melee Attack", "Ranged Attack", "Throwing Attack", "Unarmed Attack", "Off-Hand", "Booming Blade", "Smite", "Strike", "Claws", "Bite", "Beak", "Gore", "Flail", "Trident")):
         return 1
     spell = next((row for row in SPELLS if row["spell"] in name), None)
     if spell and "attack roll" in spell.get("attack_save", "").lower():
@@ -3225,8 +3258,8 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
         label = f"{title}: {row['item']}"
         basic_attacks.append(label)
         basic_descriptions[label] = describe_weapon(row, slot, modifiers, proficiency, offhand_present)
-        if "thrown" in row.get("shared_properties", "").lower():
-            throw_label = f"Throw: {row['item']}"
+        if slot == "melee main" and "thrown" in row.get("shared_properties", "").lower():
+            throw_label = f"Throwing Attack: {row['item']}"
             basic_attacks.append(throw_label)
             basic_descriptions[throw_label] = describe_weapon(row, slot, modifiers, proficiency, offhand_present, True)
     cards.insert(1 if styles else 0, html.Section([
@@ -3284,6 +3317,28 @@ def optimizer_active_feature_options(class_values, subclass_values, choice_value
 
 
 @callback(
+    Output("optimizer-wild-shape", "options"),
+    Output("optimizer-wild-shape-field", "style"),
+    Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "level-subclass", "level": ALL}, "value"),
+)
+def wild_shape_options(class_values, subclass_values):
+    druid_level = sum(value == "Druid" for value in (class_values or []))
+    if druid_level < 2:
+        return [], {"display": "none"}
+    moon_druid = any(
+        class_name == "Druid" and subclass == "Circle of the Moon"
+        for class_name, subclass in zip(class_values or [], subclass_values or [])
+    )
+    options = [
+        {"label": f"{name} (Druid {data['level']}+{' · Moon' if data.get('moon') else ''})", "value": name}
+        for name, data in WILD_SHAPE_FORMS.items()
+        if druid_level >= data["level"] and (not data.get("moon") or moon_druid)
+    ]
+    return options, {"display": "block"}
+
+
+@callback(
     Output("optimizer-elemental-cleaver-type", "style"),
     Input("optimizer-active-features", "value"),
 )
@@ -3318,6 +3373,7 @@ def show_lightning_charge_selector(equipment_effects):
     Input("turn-visibility", "value"),
     Input("turn-target-conditions", "value"),
     Input("optimizer-active-features", "value"),
+    Input("optimizer-wild-shape", "value"),
     Input("optimizer-elemental-cleaver-type", "value"),
     Input("optimizer-lightning-charges", "value"),
     State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
@@ -3326,7 +3382,7 @@ def show_lightning_charge_selector(equipment_effects):
 def optimize_turn(use_limited, class_values, subclass_values, feat_values, race, subrace, ability_data, feat_effects, equipment_effects, class_choice_values,
                   melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
                   handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id, spell_values, attacker_conditions, visibility, target_conditions,
-                  active_features, elemental_cleaver_type, lightning_charges, class_choice_ids, spell_ids):
+                  active_features, wild_shape, elemental_cleaver_type, lightning_charges, class_choice_ids, spell_ids):
     active_classes = [value for value in class_values or [] if value]
     if not active_classes:
         return html.P("Choose at least one class level to calculate an optimized turn.", className="optimized-turn-empty")
@@ -3426,8 +3482,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         throwing_boosts.append(("1d4", "Gloves of Uninhibited Kushigo"))
     tavern_brawler = "Tavern Brawler" in (feat_values or [])
     seen_throwables = set()
-    for row, slot in ((melee_main, "melee main"), (melee_off, "melee off"),
-                      (ranged_main, "ranged main"), (ranged_off, "ranged off")):
+    for row, slot in ((melee_main, "melee main"),):
         if not row or row["equipment_id"] in seen_throwables:
             continue
         naturally_thrown = "thrown" in row.get("shared_properties", "").lower()
@@ -3546,10 +3601,12 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         for spell in {spell for spells in equipment_spell_grants.values() for spell in spells}
     }
     equipment_spell_names = list(equipment_spell_sources)
+    star_map_guiding_bolt = counts.get("Druid", 0) >= 2 and ("Druid", "Circle of the Stars") in selected_subclasses
     spell_names = list(dict.fromkeys(
         selections.get("cantrips", [])
         + (selections.get("known", []) + selections.get("prepared", []) if limited else [])
         + equipment_spell_names
+        + (["Guiding Bolt"] if limited and star_map_guiding_bolt else [])
     ))
     cantrip_scale = 3 if level >= 10 else 2 if level >= 5 else 1
 
@@ -3588,6 +3645,9 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             f"Granted by {', '.join(equipment_spell_sources[spell_name])}; uses the item's recharge."
             if is_equipment_spell else "Uses a spell slot." if not is_cantrip else "Cantrip; unlimited use."
         )
+        if spell_name == "Guiding Bolt" and star_map_guiding_bolt:
+            star_map_uses = 4 if level >= 9 else 3 if level >= 5 else 2
+            spell_resource_text = f"Uses one of {star_map_uses} Star Map charges per Long Rest instead of a spell slot."
         damage_types = damage_types_in(row["damage_effect"])
 
         if spell_name == "Booming Blade":
@@ -3696,6 +3756,67 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         manoeuvre = next(value for value in selected_choices if value in MANOEUVRES)
         action_candidates.append({"name": f"{best_weapon['name']} + {manoeuvre}", "stats": add_damage_stats(best_weapon["stats"], damage_expression_stats(die)), "detail": f" Costs 1 Superiority Die ({die})."})
 
+    if wild_shape and wild_shape in WILD_SHAPE_FORMS:
+        form = WILD_SHAPE_FORMS[wild_shape]
+        druid_level = counts.get("Druid", 0)
+        moon_druid = ("Druid", "Circle of the Moon") in selected_subclasses
+        form_available = druid_level >= form["level"] and (not form.get("moon") or moon_druid)
+        if form_available:
+            # A selected form represents a turn that begins already transformed.
+            # Wild Strike and martial Extra Attack can stack to three attacks.
+            wild_strikes = 3 if druid_level >= 10 else 2 if druid_level >= 5 else 1
+            if attacks_per_action > 1 and druid_level >= 5:
+                wild_strikes = max(wild_strikes, 3)
+            strength_modifier = (WILD_SHAPE_STRENGTH[wild_shape] - 10) // 2
+            improvement_die = None
+            if not form.get("myrmidon") and druid_level >= 4:
+                smaller_die = wild_shape in {"Cat", "Bear", "Dire Raven", "Panther", "Owlbear"}
+                improvement_die = (
+                    "1d8" if smaller_die and druid_level >= 12 else
+                    "1d6" if smaller_die and druid_level >= 8 else
+                    "1d4" if smaller_die else
+                    "1d10" if druid_level >= 12 else
+                    "1d8" if druid_level >= 8 else "1d6"
+                )
+
+            def wild_shape_candidate(action_name, expression, damage_type, attack_count=1):
+                per_hit = damage_expression_stats(expression)
+                notes = []
+                if improvement_die:
+                    per_hit = add_damage_stats(per_hit, damage_expression_stats(improvement_die))
+                    notes.append(f"Wild Shape Improvement +{improvement_die}")
+                if "Tavern Brawler" in (feat_values or []) and not form.get("myrmidon"):
+                    per_hit = tuple(value + strength_modifier for value in per_hit)
+                    notes.append(f"Tavern Brawler {strength_modifier:+d}")
+                detail = f" {expression} {damage_type} per hit in {wild_shape} form."
+                if action_name in {"Pounce", "Crushing Flight", "Charge"}:
+                    detail += " May knock the target Prone."
+                elif action_name == "Rend Vision":
+                    detail += " May Blind the target."
+                elif action_name == "Corrosive Spit":
+                    detail += " Reduces the target's Armour Class on a failed Constitution save."
+                elif action_name == "Scorching Strike":
+                    detail += " May inflict Burning."
+                if notes:
+                    detail += f" Includes {', '.join(notes)}."
+                components = [{
+                    "name": f"{wild_shape} — {action_name}", "stats": per_hit, "detail": detail,
+                } for _ in range(attack_count)]
+                return {
+                    "name": f"{wild_shape} — {action_name}" + (f" ×{attack_count}" if attack_count > 1 else ""),
+                    "stats": tuple(value * attack_count for value in per_hit),
+                    "detail": detail, "components": components,
+                }
+
+            action_candidates = [
+                wild_shape_candidate(name, expression, damage_type, wild_strikes)
+                for name, expression, damage_type in form.get("actions", [])
+            ]
+            bonus_candidates = [
+                wild_shape_candidate(name, expression, damage_type)
+                for name, expression, damage_type in form.get("bonus", [])
+            ]
+
     best_bonus = max(bonus_candidates, key=lambda item: item["stats"][2]) if bonus_candidates else None
     sequence, total = [], (0.0, 0.0, 0.0)
     action_uses = Counter()
@@ -3719,7 +3840,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             sequence.append({"name": f"Bonus Action {index + 1}: {best_bonus['name']}", "min": best_bonus["stats"][0], "max": best_bonus["stats"][1], "mean": best_bonus["stats"][2], "detail": best_bonus["detail"]})
             total = add_damage_stats(total, best_bonus["stats"])
 
-    equipped_rows = [EQUIPMENT_BY_ID.get(equipment_id) for equipment_id in equipped_ids if equipment_id]
+    equipped_rows = [] if wild_shape else [EQUIPMENT_BY_ID.get(equipment_id) for equipment_id in equipped_ids if equipment_id]
     total, equipment_conditions = apply_charge_and_reverberation_effects(sequence, equipped_rows, lightning_charges)
 
     def candidate_steps(candidate, prefix):
@@ -3909,6 +4030,9 @@ def render_spell_slots(level_classes, level_subclasses, feat_values):
     druid_level = counts.get("Druid", 0)
     if druid_level >= 2:
         resources.append({"name": "Wild Shape", "count": 2, "recharge": "Short Rest", "description": "Wild Shape Charges fuel Wild Shape, Combat Wild Shape, Symbiotic Entity, or Starry Form. Moon Druid Myrmidon forms cost 2 charges."})
+    if druid_level >= 2 and ("Druid", "Circle of the Stars") in selected_subclasses:
+        star_map_charges = 4 if sum(counts.values()) >= 9 else 3 if sum(counts.values()) >= 5 else 2
+        resources.append({"name": "Star Map: Guiding Bolt", "count": star_map_charges, "recharge": "Long Rest", "description": "Cast Guiding Bolt without expending a spell slot. Available uses equal the character's proficiency bonus."})
     paladin_level = counts.get("Paladin", 0)
     if paladin_level:
         resources.append({"name": "Channel Oath", "count": 1, "recharge": "Short Rest", "description": "A Paladin has one Channel Oath Charge for oath-specific actions."})
