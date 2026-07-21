@@ -871,6 +871,7 @@ def spell_choice_field(class_name: str, kind: str, label: str, options, limit: i
     return html.Div(
         [
             html.Label(label),
+            html.P(f"0 / {limit} selected", id={"type": "spell-choice-status", "class": class_name, "kind": kind, "limit": limit}, className="spell-choice-status"),
             dcc.Dropdown(
                 id={"type": "spell-choice", "class": class_name, "kind": kind, "limit": limit},
                 options=options,
@@ -883,7 +884,6 @@ def spell_choice_field(class_name: str, kind: str, label: str, options, limit: i
                 persistence=True,
                 persistence_type="session",
             ),
-            html.P(f"0 / {limit} selected", id={"type": "spell-choice-status", "class": class_name, "kind": kind, "limit": limit}, className="spell-choice-status"),
         ],
         className="spell-choice-field",
     )
@@ -2680,16 +2680,18 @@ def render_spell_builder(level_classes, ability_data, feat_effects, equipment_ef
 @callback(
     Output({"type": "spell-choice-status", "class": ALL, "kind": ALL, "limit": ALL}, "children"),
     Output({"type": "spell-choice-status", "class": ALL, "kind": ALL, "limit": ALL}, "className"),
+    Output({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "closeOnSelect"),
     Input({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"),
     State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
 )
 def update_spell_choice_status(values, ids):
-    labels, classes = [], []
+    labels, classes, close_on_select = [], [], []
     for value, item_id in zip(values or [], ids or []):
         count, limit = len(value or []), int(item_id["limit"])
         labels.append(f"{count} / {limit} selected" + (" — remove extras" if count > limit else ""))
         classes.append("spell-choice-status spell-choice-status--over" if count > limit else "spell-choice-status")
-    return labels, classes
+        close_on_select.append(count >= limit - 1)
+    return labels, classes, close_on_select
 
 
 def class_granted_spells(level_classes, level_subclasses, class_choice_values):
@@ -2754,8 +2756,14 @@ def filter_owned_spell_options(values, level_classes, level_subclasses, class_ch
     racial_grants = racial_granted_spells(race, subrace, len([value for value in (level_classes or []) if value]))
     all_granted = {spell for spells in granted_by_class.values() for spell in spells} | set(racial_grants)
     class_levels = Counter(value for value in (level_classes or []) if value)
+    triggered_spell_id = ctx.triggered_id if isinstance(ctx.triggered_id, dict) and ctx.triggered_id.get("type") == "spell-choice" else None
     option_sets = []
     for value, item_id in zip(values, ids):
+        # The selector already hides its selected values. Replacing the active
+        # menu's options here would reset its virtualized scroll to the top.
+        if triggered_spell_id == item_id:
+            option_sets.append(no_update)
+            continue
         class_name, kind = item_id["class"], item_id["kind"]
         own_selected = set(value or [])
         class_level = class_levels.get(class_name, 0)

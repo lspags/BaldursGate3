@@ -276,6 +276,7 @@ body {
 .spell-choice-grid { display: grid; gap: 13px; margin-top: 13px; }
 .spell-choice-field label { display: block; margin-bottom: 7px; color: var(--gold); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
 .spell-choice-status, .spell-card-note { margin: 6px 0 0; color: var(--muted); font-size: 0.66rem; line-height: 1.4; }
+.spell-choice-field .spell-choice-status { margin: 0 0 6px; }
 .spell-choice-status--over { color: #ff8b81; font-weight: 800; }
 .spell-dropdown .VirtualizedSelectOption { padding: 7px 10px; }
 .spell-dropdown .dropdown-option { gap: 3px; line-height: 1.15; cursor: help; }
