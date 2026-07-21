@@ -36,6 +36,7 @@ body {
 .level-up-button:hover:not(:disabled) { background: #718643; border-color: var(--gold); }
 .level-up-button:disabled { opacity: .4; cursor: not-allowed; }
 .level-up-button:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+.level-up-footer { display: flex; justify-content: flex-end; margin-top: -3px; padding: 4px 2px 0; }
 .clear-leveling-button { flex: 0 0 auto; padding: 9px 15px; color: #f1dcc0; background: rgba(126, 38, 41, .7); border: 1px solid rgba(240, 210, 144, .48); border-radius: 6px; font: inherit; font-size: .72rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
 .clear-leveling-button:hover { background: #8f2d31; border-color: var(--gold); }
 .clear-leveling-button:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }

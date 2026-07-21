@@ -1096,7 +1096,6 @@ app.layout = html.Div(
                                     html.Div([
                                         html.H2("Choose a class at each character level"),
                                         html.Div([
-                                            html.Button("Level Up", id="level-up", n_clicks=0, disabled=True, className="level-up-button", title="Add another level in the previous class"),
                                             html.Button("Clear All", id="clear-leveling", n_clicks=0, className="clear-leveling-button", title="Reset all class levels, subclasses, feats, and level choices"),
                                         ], className="leveling-header-actions"),
                                     ], className="leveling-title-row"),
@@ -1108,6 +1107,9 @@ app.layout = html.Div(
                                 className="leveling-header",
                             ),
                             html.Div(leveling_rows(), className="level-selection-list"),
+                            html.Div([
+                                html.Button("Level Up", id="level-up", n_clicks=0, disabled=True, className="level-up-button", title="Add another level in the previous class"),
+                            ], className="level-up-footer"),
                         ],
                         className="tab-content leveling-content",
                     ),
