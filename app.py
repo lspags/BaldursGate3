@@ -999,7 +999,7 @@ app.layout = html.Div(
             storage_type="session",
         ),
         dcc.Store(id="feat-effects-store", data={"ability_bonuses": {}, "skills": [], "expertise": []}, storage_type="session"),
-        dcc.Store(id="equipment-effects-store", data={"ability_adjustments": [], "lightning_items": [], "reverberation_items": []}, storage_type="session"),
+        dcc.Store(id="equipment-effects-store", data={"ability_adjustments": [], "lightning_items": [], "reverberation_items": [], "equipped_items": []}, storage_type="session"),
         dcc.Store(id="act-equipment-loadouts", data={"active_act": 1, "loadouts": {}}, storage_type="session"),
         html.Main(
             [
@@ -1238,7 +1238,7 @@ app.layout = html.Div(
                                     ], className="field"),
                                 html.Div([html.Label("Target conditions"), dcc.Dropdown(
                                         id="turn-target-conditions", multi=True, placeholder="Choose target conditions",
-                                        options=["Below Maximum HP", "Bleeding", "Burning", "Charmed", "Frightened", "Poisoned", "Prone", "Restrained", "Threatened by Ally", "Wet", "Will Move"],
+                                        options=["Below Maximum HP", "Large or Larger", "Hunter's Marked", "Bleeding", "Burning", "Charmed", "Frightened", "Poisoned", "Prone", "Restrained", "Threatened by Ally", "Wet", "Will Move"],
                                         className="rich-dropdown", persistence=True, persistence_type="session",
                                     )], className="field"),
                                     html.Div([
@@ -2287,7 +2287,7 @@ def calculate_feat_effects(feat_values, choice_values, choice_ids):
             proficiencies.add("Heavy armour")
         elif feat == "Weapon Master":
             proficiencies.update((selected.get("weapons") or [])[:4])
-    return {"ability_bonuses": dict(bonuses), "skills": sorted(skills), "expertise": sorted(expertise), "saving_throws": sorted(saving_throws), "proficiencies": sorted(proficiencies), "selections": selections}
+    return {"ability_bonuses": dict(bonuses), "skills": sorted(skills), "expertise": sorted(expertise), "saving_throws": sorted(saving_throws), "proficiencies": sorted(proficiencies), "selections": selections, "feats": [feat for feat in (feat_values or []) if feat]}
 
 
 @callback(
@@ -2826,12 +2826,13 @@ def equipment_granted_spells(equipment_ids) -> dict[str, list[str]]:
 
 
 def equipment_effect_data(equipment_ids) -> dict:
-    adjustments, lightning_items, reverberation_items = [], [], []
+    adjustments, lightning_items, reverberation_items, equipped_items = [], [], [], []
     for equipment_id in equipment_ids or []:
         row = EQUIPMENT_BY_ID.get(equipment_id)
         if not row:
             continue
         special, item = row.get("special", ""), row["item"]
+        equipped_items.append(item)
         if re.search(r"Lightning Charges", special, re.IGNORECASE):
             lightning_items.append(item)
         if re.search(r"Reverberation", special, re.IGNORECASE):
@@ -2856,6 +2857,7 @@ def equipment_effect_data(equipment_ids) -> dict:
         "ability_adjustments": adjustments,
         "lightning_items": list(dict.fromkeys(lightning_items)),
         "reverberation_items": list(dict.fromkeys(reverberation_items)),
+        "equipped_items": list(dict.fromkeys(equipped_items)),
     }
 
 
@@ -2998,7 +3000,7 @@ def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_leve
         flat += 3 if barbarian_level >= 9 else 2
     if charge_bound:
         flat += 1
-    if not thrown and "Duelling" in styles and row["category"] == "melee" and "main" in slot and not offhand_present and "two-handed" not in properties:
+    if "Duelling" in styles and row["category"] == "melee" and "main" in slot and not offhand_present and "two-handed" not in properties:
         flat += 2
     expression = row.get("damage", "1")
     if charge_bound:
@@ -3092,10 +3094,28 @@ def crit_result_card(normal_sequence, crit_sequence, threshold, advantage, crit_
     ], className="optimized-turn-result crit-result-card")
 
 
+def has_thrown_property(row):
+    return bool(row) and (
+        "thrown" in row.get("shared_properties", "").lower()
+        or row.get("item") in {"Dwarven Thrower", "Orphic Hammer", "Returning Pike"}
+    )
+
+
 def throwing_attack_row(row):
     """Return the damage profile used when the equipped main-hand item is thrown."""
-    if not row or "thrown" in row.get("shared_properties", "").lower():
+    if not row:
         return row
+    if has_thrown_property(row):
+        # Throw attacks normally use only the weapon's base physical damage;
+        # innate elemental riders do not transfer unless explicitly enabled.
+        damage_parts = [part.strip() for part in row.get("damage", "1").split(";") if part.strip()]
+        type_parts = [part.strip() for part in row.get("damage_type", "Weapon").split(";") if part.strip()]
+        damage = damage_parts[0] if damage_parts else "1"
+        damage_type = type_parts[0] if type_parts else "Weapon"
+        if row.get("item") == "Lightning Jabber":
+            damage += "; 1d4"
+            damage_type += "; Lightning"
+        return {**row, "damage": damage, "damage_type": damage_type, "shared_properties": row.get("shared_properties", "") + "; Thrown"}
     try:
         weight = float(row.get("weight_kg") or 0)
     except (TypeError, ValueError):
@@ -3152,7 +3172,11 @@ def weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand
     binding_name = "Hexed Weapon" if "Hexed Weapon" in active_features else "Pact Weapon"
     ability_reason = binding_name if hexed_weapon else "Finesse" if finesse else "Monk weapon" if monk_weapon else "Ranged weapon" if ranged else "standard Strength weapon"
     elevation_text = f", {elevation} {elevation_bonus:+d}" if elevation_bonus else ""
-    return f"{mode} with {row['item']}. Attack roll: +{attack_bonus} ({ability} {modifier:+d} from {ability_reason}, {proficiency_text}, enchantment +{attack_enchantment}{', Favoured Weapon +1' if charge_bound else ''}{', Archery +2' if style_attack_bonus else ''}{elevation_text}). Damage: {formula} {row.get('damage_type', '')}.{modifier_text}{f' Damage is magical from {binding_name}.' if hexed_weapon else ''}{' Charge-bound bonuses active.' if charge_bound else ''}{' Duelling +2.' if duelling else ''}{extras}"
+    weight_text = ""
+    if thrown:
+        weight = row.get("weight_kg") or "unknown"
+        weight_text = f" Weight: {weight} kg. Knocks a target back when this is over half its weight, and knocks it Prone when this is heavier than the target."
+    return f"{mode} with {row['item']}. Attack roll: +{attack_bonus} ({ability} {modifier:+d} from {ability_reason}, {proficiency_text}, enchantment +{attack_enchantment}{', Favoured Weapon +1' if charge_bound else ''}{', Archery +2' if style_attack_bonus else ''}{elevation_text}). Damage: {formula} {row.get('damage_type', '')}.{modifier_text}{weight_text}{f' Damage is magical from {binding_name}.' if hexed_weapon else ''}{' Charge-bound bonuses active.' if charge_bound else ''}{' Duelling +2.' if duelling else ''}{extras}"
 
 
 @callback(
@@ -3283,9 +3307,34 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
         basic_attacks.append(label)
         basic_descriptions[label] = describe_weapon(row, slot, modifiers, proficiency, offhand_present)
         if slot == "melee main":
-            throw_label = f"Throwing Attack: {row['item']}"
+            throw_row = throwing_attack_row(row)
+            throw_stats, _, _, _ = weapon_damage_stats(
+                throw_row, modifiers, styles, slot, offhand_present, counts.get("Monk", 0),
+                active_features, counts.get("Barbarian", 0), thrown=True,
+            )
+            equipped_names = set((equipment_effects or {}).get("equipped_items", []))
+            for item_name, bonus in (("Ring of Flinging", "1d4"), ("Gloves of Uninhibited Kushigo", "1d4"),
+                                     ("Helldusk Gloves", "1d6"), ("Flawed Helldusk Gloves", "1d4")):
+                if item_name in equipped_names and not (item_name == "Flawed Helldusk Gloves" and "Helldusk Gloves" in equipped_names):
+                    throw_stats = add_damage_stats(throw_stats, damage_expression_stats(bonus))
+            if "Legacy of the Masters" in equipped_names:
+                throw_stats = tuple(value + 2 for value in throw_stats)
+            if "Horns of the Berserker" in equipped_names and "Below 50% HP" in (attacker_conditions or []):
+                throw_stats = tuple(value + 2 for value in throw_stats)
+            if "Tavern Brawler" in (feat_effects or {}).get("feats", []):
+                throw_stats = tuple(value + modifiers["Strength"] for value in throw_stats)
+            if row["item"] == "Nyrulna":
+                throw_stats = add_damage_stats(throw_stats, damage_expression_stats("3d4"))
+            if row["item"] == "Dwarven Thrower" and "Dwarf" in f"{race or ''} {subrace or ''}":
+                throw_stats = add_damage_stats(throw_stats, damage_expression_stats("1d8"))
+            if row["item"] == "Dwarven Thrower" and "Large or Larger" in (target_conditions or []):
+                throw_stats = add_damage_stats(throw_stats, damage_expression_stats("2d8"))
+            if "Hunter's Marked" in (target_conditions or []):
+                throw_stats = add_damage_stats(throw_stats, damage_expression_stats("1d6"))
+            throw_type = throw_row.get("damage_type", "Bludgeoning").replace(";", " +")
+            throw_label = f"Throwing Attack: {row['item']} — {throw_stats[0]:g}–{throw_stats[1]:g} {throw_type}"
             basic_attacks.append(throw_label)
-            basic_descriptions[throw_label] = describe_weapon(throwing_attack_row(row), slot, modifiers, proficiency, offhand_present, True)
+            basic_descriptions[throw_label] = describe_weapon(throw_row, slot, modifiers, proficiency, offhand_present, True)
     cards.insert(1 if styles else 0, html.Section([
         html.Div([html.H3("Basic attacks"), html.Span(f"{len(basic_attacks)} available")], className="spell-card-heading"),
         html.P(combat_action_tooltips(basic_attacks, basic_descriptions), className="attack-list"),
@@ -3509,7 +3558,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     for row, slot in ((melee_main, "melee main"),):
         if not row or row["equipment_id"] in seen_throwables:
             continue
-        naturally_thrown = "thrown" in row.get("shared_properties", "").lower()
+        naturally_thrown = has_thrown_property(row)
         cleaver_thrown = "Elemental Cleaver" in active_features and "Rage" in active_features and slot == "melee main"
         seen_throwables.add(row["equipment_id"])
         if cleaver_thrown and not naturally_thrown:
@@ -3527,12 +3576,30 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         if tavern_brawler:
             per_hit = tuple(value + modifiers["Strength"] for value in per_hit)
             notes.append(f"Tavern Brawler {modifiers['Strength']:+d}")
+        if "Legacy of the Masters" in equipped_names:
+            per_hit = tuple(value + 2 for value in per_hit)
+            notes.append("Legacy of the Masters +2")
+        if "Helldusk Gloves" in equipped_names:
+            per_hit = add_damage_stats(per_hit, damage_expression_stats("1d6"))
+            notes.append("Helldusk Gloves +1d6 Fire")
+        elif "Flawed Helldusk Gloves" in equipped_names:
+            per_hit = add_damage_stats(per_hit, damage_expression_stats("1d4"))
+            notes.append("Flawed Helldusk Gloves +1d4 Fire")
+        if "Horns of the Berserker" in equipped_names and "Below 50% HP" in (attacker_conditions or []):
+            per_hit = tuple(value + 2 for value in per_hit)
+            notes.append("Horns of the Berserker +2 Necrotic")
+        if "Hunter's Marked" in (target_conditions or []):
+            per_hit = add_damage_stats(per_hit, damage_expression_stats("1d6"))
+            notes.append("Hunter's Mark +1d6 Weapon")
         if row["item"] == "Nyrulna":
             per_hit = add_damage_stats(per_hit, damage_expression_stats("3d4"))
             notes.append("Zephyr Connection +3d4 Thunder to the target-area explosion")
         if row["item"] == "Dwarven Thrower" and "Dwarf" in f"{race or ''} {subrace or ''}":
             per_hit = add_damage_stats(per_hit, damage_expression_stats("1d8"))
             notes.append("Dwarven Thrower +1d8 Bludgeoning for a dwarf")
+        if row["item"] == "Dwarven Thrower" and "Large or Larger" in (target_conditions or []):
+            per_hit = add_damage_stats(per_hit, damage_expression_stats("2d8"))
+            notes.append("Dwarven Thrower +2d8 Bludgeoning against a Large or larger target")
         if "Hexblade's Curse" in active_features:
             curse_bonus = 4 if level >= 9 else 3 if level >= 5 else 2
             per_hit = tuple(value + curse_bonus for value in per_hit)
