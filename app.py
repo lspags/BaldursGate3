@@ -4611,12 +4611,29 @@ def manage_act_loadouts(selected_act, *args):
     values, stored = list(args[:-1]), dict(args[-1] or {})
     loadouts = dict(stored.get("loadouts") or {})
     previous_act = int(stored.get("active_act") or 1)
+
+    def save_and_inherit(act, slot_values):
+        """Save one act and carry unchanged inherited slots forward only."""
+        old_upstream = dict(loadouts.get(str(act)) or {})
+        new_upstream = dict(zip(EQUIPMENT_SLOT_IDS, slot_values))
+        loadouts[str(act)] = new_upstream
+        for later_act in range(act + 1, 4):
+            key = str(later_act)
+            old_downstream = dict(loadouts.get(key) or {})
+            new_downstream = dict(old_downstream)
+            for slot in EQUIPMENT_SLOT_IDS:
+                downstream_value = old_downstream.get(slot)
+                if slot not in old_downstream or downstream_value is None or downstream_value == old_upstream.get(slot):
+                    new_downstream[slot] = new_upstream.get(slot)
+            loadouts[key] = new_downstream
+            old_upstream, new_upstream = old_downstream, new_downstream
+
     if ctx.triggered_id == "equipment-act-tab":
-        loadouts[str(previous_act)] = dict(zip(EQUIPMENT_SLOT_IDS, values))
+        save_and_inherit(previous_act, values)
         target = loadouts.get(str(int(selected_act)), {})
         stored.update({"active_act": int(selected_act), "loadouts": loadouts})
         return *[target.get(slot) for slot in EQUIPMENT_SLOT_IDS], stored
-    loadouts[str(int(selected_act or previous_act))] = dict(zip(EQUIPMENT_SLOT_IDS, values))
+    save_and_inherit(int(selected_act or previous_act), values)
     stored.update({"active_act": int(selected_act or previous_act), "loadouts": loadouts})
     return *([no_update] * len(EQUIPMENT_SLOT_IDS)), stored
 
