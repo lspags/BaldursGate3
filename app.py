@@ -67,6 +67,21 @@ def load_equipment_catalogue() -> list[dict[str, str]]:
 
 EQUIPMENT = load_equipment_catalogue()
 EQUIPMENT_BY_ID = {row["equipment_id"]: row for row in EQUIPMENT}
+
+ACT_ONE_LOCATION_TERMS = ("emerald grove", "the hollow", "sacred pool", "blighted village", "goblin camp", "shattered sanctum", "risen road", "waukeen", "zhentarim", "underdark", "grymforge", "adamantine forge", "crèche", "creche", "rosymorn", "mountain pass", "arcane tower", "myconid", "sunlit wetlands", "overgrown", "ravaged beach")
+ACT_TWO_LOCATION_TERMS = ("last light", "moonrise", "gauntlet of shar", "shadow-cursed", "reithwin", "house of healing", "mason's guild", "waning moon", "mind flayer colony", "shadowfell", "sharran sanctuary")
+ACT_THREE_LOCATION_TERMS = ("rivington", "wyrm's", "lower city", "baldur's gate", "stormshore", "sorcerous sundries", "house of hope", "guildhall", "murder tribunal", "bhaal temple", "circus of the last days", "counting house", "steel watch", "iron throne", "house of grief", "cazador", "ramazith", "devil's fee", "danthelon", "facemaker", "highberry", "lora's house", "dragon's sanctum", "undercity")
+
+
+def equipment_earliest_act(row):
+    location = (row.get("where_to_find") or "").lower()
+    if any(term in location for term in ACT_ONE_LOCATION_TERMS):
+        return 1
+    if any(term in location for term in ACT_TWO_LOCATION_TERMS):
+        return 2
+    if any(term in location for term in ACT_THREE_LOCATION_TERMS):
+        return 3
+    return 1
 ABILITIES = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
 DAMAGE_TYPES = ["Acid", "Bludgeoning", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Piercing", "Poison", "Psychic", "Radiant", "Slashing", "Thunder"]
 POINT_BUY_COSTS = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
@@ -409,6 +424,7 @@ def equipment_type_label(row: dict[str, str]) -> str:
 
 def equipment_option(row: dict[str, str]) -> dict[str, Any]:
     details = meaningful(
+        f"Available by Act {equipment_earliest_act(row)}",
         equipment_type_label(row),
         row.get("damage", ""),
         f"AC {row['armour_class']}" if row.get("armour_class") else "",
@@ -946,6 +962,7 @@ app.layout = html.Div(
         ),
         dcc.Store(id="feat-effects-store", data={"ability_bonuses": {}, "skills": [], "expertise": []}, storage_type="session"),
         dcc.Store(id="equipment-effects-store", data={"ability_adjustments": [], "lightning_items": [], "reverberation_items": []}, storage_type="session"),
+        dcc.Store(id="act-equipment-loadouts", data={"active_act": 1, "loadouts": {}}, storage_type="session"),
         html.Main(
             [
                 dcc.Tabs(
@@ -1213,6 +1230,11 @@ app.layout = html.Div(
                             html.Div([
                                 html.P("LOADOUT", className="eyebrow"),
                                 html.H2("Weapons and equipment"),
+                                dcc.Tabs(id="equipment-act-tab", value=1, children=[
+                                    dcc.Tab(label=f"Act {act}", value=act, className="builder-tab", selected_className="builder-tab builder-tab--selected")
+                                    for act in (1, 2, 3)
+                                ], className="equipment-act-tabs"),
+                                html.P("The open act loadout is applied to the character sheet and optimizer. Later acts include all equipment obtainable in earlier acts.", className="condition-help"),
                                 dcc.Checklist(
                                     id="proficient-equipment-only",
                                     options=[{"label": " Only show items I am proficient with", "value": "proficient"}],
@@ -1606,6 +1628,7 @@ def selected_build_name(build_id):
     Output("optimizer-use-limited-resources", "value", allow_duplicate=True),
     Output("proficient-equipment-only", "value", allow_duplicate=True),
     Output("item-location-checklist", "value", allow_duplicate=True),
+    Output("act-equipment-loadouts", "data", allow_duplicate=True), Output("equipment-act-tab", "value", allow_duplicate=True),
     Output("confirm-build-overwrite", "displayed"),
     Output("pending-build-overwrite", "data"),
     Output("build-message-dismiss", "disabled", allow_duplicate=True),
@@ -1632,6 +1655,7 @@ def selected_build_name(build_id):
     State("optimizer-lightning-charges", "value"), State("optimizer-use-limited-resources", "value"),
     State("proficient-equipment-only", "value"),
     State("item-location-checklist", "value"),
+    State("act-equipment-loadouts", "data"), State("equipment-act-tab", "value"),
     State("pending-build-overwrite", "data"),
     prevent_initial_call=True,
 )
@@ -1640,7 +1664,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                         class_choice_values, class_choice_ids, spell_values, spell_ids, melee_main, melee_off,
                         ranged_main, ranged_off, headwear, armour, handwear, footwear, cape, necklace, ring_1, ring_2,
                         visibility, elevation, attacker_conditions, target_conditions, active_features,
-                        cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items, pending_overwrite):
+                        cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items, act_loadouts, equipment_act, pending_overwrite):
     # The first three restore outputs are ALL-pattern level controls and must
     # return one value per matching component, even when none should change.
     empty_restore = [
@@ -1648,7 +1672,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
         [no_update] * 12,
         [no_update] * 12,
         [no_update] * 12,
-        *([no_update] * 22),
+        *([no_update] * 24),
     ]
     user_id, _ = user_identity()
     if not user_id:
@@ -1692,6 +1716,8 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
             payload.get("proficient_only", []),
             payload.get("acquired_items", []),
+            payload.get("equipment_loadouts", {"active_act": payload.get("equipment_act", 1), "loadouts": {str(payload.get("equipment_act", 1)): {key.replace("_", "-"): value for key, value in equipment.items()}}}),
+            payload.get("equipment_act", 1),
             False, None,
             False, 0,
         )
@@ -1712,6 +1738,15 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
         "proficient_only": proficient_only,
         "acquired_items": list(acquired_items or []),
     }
+    current_loadouts = dict(act_loadouts or {"active_act": int(equipment_act or 1), "loadouts": {}})
+    saved_loadouts = dict(current_loadouts.get("loadouts") or {})
+    saved_loadouts[str(int(equipment_act or 1))] = {
+        "melee-main": melee_main, "melee-off": melee_off, "ranged-main": ranged_main, "ranged-off": ranged_off,
+        "headwear": headwear, "armour": armour, "handwear": handwear, "footwear": footwear, "cape": cape,
+        "necklace": necklace, "ring-1": ring_1, "ring-2": ring_2,
+    }
+    payload["equipment_act"] = int(equipment_act or 1)
+    payload["equipment_loadouts"] = {"active_act": int(equipment_act or 1), "loadouts": saved_loadouts}
     matching_build = next(
         (row for row in list_builds(user_id) if row["name"].strip().casefold() == name.casefold()),
         None,
@@ -3985,6 +4020,7 @@ def calculate_action_economy(class_values, subclass_values):
     Output("equipment-handwear", "options"), Output("equipment-footwear", "options"),
     Output("equipment-cape", "options"),
     Output("equipment-necklace", "options"), Output("equipment-ring-1", "options"), Output("equipment-ring-2", "options"),
+    Input("equipment-act-tab", "value"),
     Input("proficient-equipment-only", "value"), Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
     Input({"type": "level-class", "level": ALL}, "value"), Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "level-feat", "level": ALL}, "value"), Input("feat-effects-store", "data"),
@@ -3993,7 +4029,7 @@ def calculate_action_economy(class_values, subclass_values):
     Input("pending-build-load", "data"),
     State("equipment-melee-off", "value"), State("equipment-ranged-off", "value"),
 )
-def update_equipment_options(filter_values, race, subrace, classes, subclasses, feats, feat_effects, class_choices,
+def update_equipment_options(equipment_act, filter_values, race, subrace, classes, subclasses, feats, feat_effects, class_choices,
                              melee_main_id, ranged_main_id, pending_build, melee_off_id, ranged_off_id):
     if pending_build:
         race = pending_build.get("race") or race
@@ -4018,7 +4054,7 @@ def update_equipment_options(filter_values, race, subrace, classes, subclasses, 
         ranged_off_id = saved_equipment.get("ranged_off") or ranged_off_id
     profs = character_equipment_proficiencies(race, subrace, classes, feat_effects)
     only_proficient = "proficient" in (filter_values or [])
-    usable = [row for row in EQUIPMENT if "not usable by humanoids" not in row.get("special", "").lower()]
+    usable = [row for row in EQUIPMENT if equipment_earliest_act(row) <= int(equipment_act or 1) and "not usable by humanoids" not in row.get("special", "").lower()]
     if only_proficient:
         usable = [row for row in usable if proficient_with_item(row, profs)]
     by_category = lambda *names: [row for row in usable if row["category"] in names]
@@ -4054,6 +4090,31 @@ def update_equipment_options(filter_values, race, subrace, classes, subclasses, 
         options(by_category("cloaks")),
         options(by_category("amulets")), options(by_category("rings")), options(by_category("rings")),
     )
+
+
+EQUIPMENT_SLOT_IDS = ["melee-main", "melee-off", "ranged-main", "ranged-off", "headwear", "armour", "handwear", "footwear", "cape", "necklace", "ring-1", "ring-2"]
+
+
+@callback(
+    *[Output(f"equipment-{slot}", "value", allow_duplicate=True) for slot in EQUIPMENT_SLOT_IDS],
+    Output("act-equipment-loadouts", "data", allow_duplicate=True),
+    Input("equipment-act-tab", "value"),
+    *[Input(f"equipment-{slot}", "value") for slot in EQUIPMENT_SLOT_IDS],
+    State("act-equipment-loadouts", "data"),
+    prevent_initial_call=True,
+)
+def manage_act_loadouts(selected_act, *args):
+    values, stored = list(args[:-1]), dict(args[-1] or {})
+    loadouts = dict(stored.get("loadouts") or {})
+    previous_act = int(stored.get("active_act") or 1)
+    if ctx.triggered_id == "equipment-act-tab":
+        loadouts[str(previous_act)] = dict(zip(EQUIPMENT_SLOT_IDS, values))
+        target = loadouts.get(str(int(selected_act)), {})
+        stored.update({"active_act": int(selected_act), "loadouts": loadouts})
+        return *[target.get(slot) for slot in EQUIPMENT_SLOT_IDS], stored
+    loadouts[str(int(selected_act or previous_act))] = dict(zip(EQUIPMENT_SLOT_IDS, values))
+    stored.update({"active_act": int(selected_act or previous_act), "loadouts": loadouts})
+    return *([no_update] * len(EQUIPMENT_SLOT_IDS)), stored
 
 
 @callback(
