@@ -3782,10 +3782,32 @@ def calculate_action_economy(class_values, subclass_values):
     Input({"type": "level-feat", "level": ALL}, "value"), Input("feat-effects-store", "data"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
     Input("equipment-melee-main", "value"), Input("equipment-ranged-main", "value"),
+    Input("pending-build-load", "data"),
     State("equipment-melee-off", "value"), State("equipment-ranged-off", "value"),
 )
 def update_equipment_options(filter_values, race, subrace, classes, subclasses, feats, feat_effects, class_choices,
-                             melee_main_id, ranged_main_id, melee_off_id, ranged_off_id):
+                             melee_main_id, ranged_main_id, pending_build, melee_off_id, ranged_off_id):
+    if pending_build:
+        race = pending_build.get("race") or race
+        subrace = pending_build.get("subrace") or subrace
+        classes = pending_build.get("classes") or classes
+        subclasses = pending_build.get("subclasses") or subclasses
+        feats = pending_build.get("feats") or feats
+        saved_feat_choices = pending_build.get("feat_choices") or []
+        if saved_feat_choices:
+            feat_effects = calculate_feat_effects(
+                feats,
+                [record.get("value") for record in saved_feat_choices],
+                [record.get("id") for record in saved_feat_choices],
+            )
+        saved_class_choices = pending_build.get("class_choices") or []
+        if saved_class_choices:
+            class_choices = [record.get("value") for record in saved_class_choices]
+        saved_equipment = pending_build.get("equipment") or {}
+        melee_main_id = saved_equipment.get("melee_main") or melee_main_id
+        ranged_main_id = saved_equipment.get("ranged_main") or ranged_main_id
+        melee_off_id = saved_equipment.get("melee_off") or melee_off_id
+        ranged_off_id = saved_equipment.get("ranged_off") or ranged_off_id
     profs = character_equipment_proficiencies(race, subrace, classes, feat_effects)
     only_proficient = "proficient" in (filter_values or [])
     usable = [row for row in EQUIPMENT if "not usable by humanoids" not in row.get("special", "").lower()]
