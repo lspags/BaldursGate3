@@ -151,13 +151,13 @@ CORE_COMBAT_ACTIONS = {
     "Flurry of Blows: Topple", "Flurry of Blows: Stagger", "Flurry of Blows: Push", "Drunken Technique",
     "Turn Undead", "Destroy Undead",
     "Boot of the Giants", "Intimidating Presence", "Mighty Impel", "Mantle of Majesty: Command",
-    "Radiance of the Dawn", "Charm Animals and Plants", "Water Whip", "Starry Form: Archer",
+    "Radiance of the Dawn", "Charm Animals and Plants", "Water Whip", "Starry Form: Archer", "Starry Form: Chalice", "Starry Form: Dragon",
     "Abjure Enemy", "Dreadful Aspect", "Nature's Wrath", "Fey Presence", "Hexblade's Curse",
     "Hypnotic Gaze", "Dirty Trick: Flick o' the Wrist", "Dirty Trick: Sand Toss", "Panache",
 }
 NON_COMBAT_ACTION_FEATURES = NON_ATTACK_SUBCLASS_ACTIONS | {
     "Rage", "Frenzy", "Giant's Rage", "Rage: Wild Magic", "Magic Awareness", "Bolstering Magic: Boon",
-    "Natural Recovery", "Combat Wild Shape", "Lunar Mend", "Starry Form: Chalice", "Starry Form: Dragon",
+    "Natural Recovery", "Combat Wild Shape", "Lunar Mend",
     "Weapon Bond", "Harmony of Fire and Water", "Wholeness of Body", "Shadow Step", "Mist Stance", "Ride the Wind",
     "Healing Radiance", "Inquisitor's Might", "Vow of Enmity", "Aura of Protection", "Aura of Warding",
     "Aura of Devotion", "Aura of Hate", "Aura of Courage", "Ranger's Companion", "Dread Ambusher: Hide",
@@ -174,6 +174,9 @@ COMBAT_ACTION_DESCRIPTIONS = {
     "Stunning Strike (Unarmed)": "Spend a Ki Point to make an unarmed attack that can Stun the target.",
     "Divine Smite": "After a melee weapon hit, expend a spell slot to deal additional Radiant damage.",
     "Turn Undead": "Spend Channel Divinity to Turn nearby undead; affected creatures flee and cannot take actions or reactions.",
+    "Starry Form: Archer": "Spend a Wild Shape Charge to enter Archer form. Luminous Arrow then deals 1d8 + Wisdom modifier Radiant damage as a Bonus Action, increasing to 2d8 at Druid level 10.",
+    "Starry Form: Chalice": "Spend a Wild Shape Charge to enter Chalice form. After casting an eligible healing spell, heal another target for 1d8 + Wisdom modifier, increasing to 2d8 at Druid level 10.",
+    "Starry Form: Dragon": "Spend a Wild Shape Charge to enter Dragon form. Dazzling Breath deals Radiant damage as a Bonus Action and the form improves Concentration saves.",
 }
 ARCANE_SHOT_DESCRIPTIONS = {
     "Arcane Shot: Banishing Arrow": "Deal normal weapon damage and potentially Banish the target.",
@@ -3909,6 +3912,25 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
                 wild_shape_candidate(name, expression, damage_type)
                 for name, expression, damage_type in form.get("bonus", [])
             ]
+
+    stars_druid = counts.get("Druid", 0) >= 2 and ("Druid", "Circle of the Stars") in selected_subclasses
+    if limited and stars_druid and not wild_shape:
+        druid_level = counts.get("Druid", 0)
+        wisdom_modifier = modifiers["Wisdom"]
+        archer_expression = "2d8" if druid_level >= 10 else "1d8"
+        archer_stats = tuple(value + wisdom_modifier for value in damage_expression_stats(archer_expression))
+        bonus_candidates.append({
+            "name": "Starry Form: Archer — Luminous Arrow",
+            "stats": archer_stats,
+            "detail": f" {archer_expression}{wisdom_modifier:+d} Radiant using Wisdom. Bonus Action; requires Archer form and a Wild Shape Charge to enter the form.",
+        })
+        dragon_expression = "4d6" if druid_level >= 10 else "3d6" if druid_level >= 5 else "2d6"
+        dragon_stats = tuple(value + wisdom_modifier for value in damage_expression_stats(dragon_expression))
+        bonus_candidates.append({
+            "name": "Starry Form: Dragon — Dazzling Breath",
+            "stats": dragon_stats,
+            "detail": f" {dragon_expression}{wisdom_modifier:+d} Radiant in a 5 m cone using Wisdom. Bonus Action; Dexterity save for half damage. Requires Dragon form and a Wild Shape Charge to enter the form.",
+        })
 
     best_bonus = max(bonus_candidates, key=lambda item: item["stats"][2]) if bonus_candidates else None
     sequence, total = [], (0.0, 0.0, 0.0)
