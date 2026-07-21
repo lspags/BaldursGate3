@@ -1174,7 +1174,7 @@ app.layout = html.Div(
                                     ], className="field"),
                                 html.Div([html.Label("Target conditions"), dcc.Dropdown(
                                         id="turn-target-conditions", multi=True, placeholder="Choose target conditions",
-                                        options=["Below Maximum HP", "Bleeding", "Burning", "Charmed", "Frightened", "Poisoned", "Prone", "Restrained", "Wet", "Will Move"],
+                                        options=["Below Maximum HP", "Bleeding", "Burning", "Charmed", "Frightened", "Poisoned", "Prone", "Restrained", "Threatened by Ally", "Wet", "Will Move"],
                                         className="rich-dropdown", persistence=True, persistence_type="session",
                                     )], className="field"),
                                     html.Div([
@@ -3287,6 +3287,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     melee_main, melee_off = EQUIPMENT_BY_ID.get(melee_main_id), EQUIPMENT_BY_ID.get(melee_off_id)
     ranged_main, ranged_off = EQUIPMENT_BY_ID.get(ranged_main_id), EQUIPMENT_BY_ID.get(ranged_off_id)
     main_weapons = [("Melee Attack", melee_main, "melee main", bool(melee_off)), ("Ranged Attack", ranged_main, "ranged main", bool(ranged_off))]
+    weapon_attacks = []
     for name, row, slot, offhand_present in main_weapons:
         if row and row["category"] in {"melee", "ranged"}:
             per_hit, expression, ability, flat = weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_level, active_features, counts.get("Barbarian", 0))
@@ -3322,10 +3323,38 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             candidate = {"name": f"{name} ×{attacks_per_action}: {row['item']}", "stats": stats, "detail": f" {expression}{flat:+d} per hit using {ability}. Damage type: {', '.join(weapon_types) or row.get('damage_type', 'Weapon')}.{note}", "components": components}
             action_candidates.append(candidate)
             attack_data = {"row": row, "per_hit": per_hit, "candidate": candidate, "ability": ability}
+            weapon_attacks.append(attack_data)
             if row["category"] == "ranged":
                 ranged_attack = attack_data
             else:
                 melee_attack = attack_data
+
+    rogue_level = counts.get("Rogue", 0)
+    sneak_general = bool({"Advantage", "Hidden", "Invisible"} & set(attacker_conditions or [])) or bool({"Threatened by Ally", "Restrained"} & set(target_conditions or []))
+    sneak_context = sneak_general or "Prone" in (target_conditions or [])
+    if rogue_level and sneak_context:
+        sneak_expression = f"{(rogue_level + 1) // 2}d6"
+        sneak_stats = damage_expression_stats(sneak_expression)
+        for attack in weapon_attacks:
+            row = attack["row"]
+            if row["category"] != "ranged" and "finesse" not in row.get("shared_properties", "").lower():
+                continue
+            if not sneak_general and row["category"] == "ranged":
+                continue
+            base = attack["candidate"]
+            components = [dict(component) for component in base.get("components", [])]
+            if components:
+                components[0]["stats"] = add_damage_stats(components[0]["stats"], sneak_stats)
+                components[0]["name"] = f"Sneak Attack: {components[0]['name']}"
+                components[0]["detail"] += f" Sneak Attack adds {sneak_expression} once this turn."
+            action_candidates.append({
+                **base,
+                "name": f"Sneak Attack ({sneak_expression}): {base['name']}",
+                "stats": add_damage_stats(base["stats"], sneak_stats),
+                "detail": base["detail"] + f" Sneak Attack adds {sneak_expression} once this turn.",
+                "components": components,
+                "max_per_turn": 1,
+            })
     unarmed_ability = "Dexterity" if monk_level and modifiers["Dexterity"] > modifiers["Strength"] else "Strength"
     unarmed_die = CLASS_PROGRESSIONS["Monk"][monk_level - 1].get("martial_arts", "1") if monk_level else "1"
     unarmed_base = damage_expression_stats(unarmed_die)
