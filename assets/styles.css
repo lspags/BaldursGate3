@@ -277,6 +277,25 @@ body {
 .spell-choice-field label { display: block; margin-bottom: 7px; color: var(--gold); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
 .spell-choice-status, .spell-card-note { margin: 6px 0 0; color: var(--muted); font-size: 0.66rem; line-height: 1.4; }
 .spell-choice-status--over { color: #ff8b81; font-weight: 800; }
+.spell-dropdown .VirtualizedSelectOption { padding: 7px 10px; }
+.spell-dropdown .dropdown-option { gap: 3px; line-height: 1.15; }
+.spell-dropdown .option-title { font-size: 0.78rem; }
+.spell-dropdown .option-detail { font-size: 0.65rem; line-height: 1.2; -webkit-line-clamp: 2; }
+.spell-dropdown .Select--multi .Select-value { margin-top: 4px; margin-bottom: 2px; }
+.spell-page-slots { margin: 14px 0; }
+.spell-page-slot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.spell-page-slot-grid .spell-slot-group { background: rgba(23, 23, 27, 0.78); border-color: rgba(209, 173, 97, 0.3); }
+.spell-page-slot-grid .spell-slot-group--pact { background: rgba(74, 46, 91, 0.3); }
+.spell-page-slot-grid .spell-slot-group--resource { background: rgba(34, 81, 65, 0.24); }
+.spell-page-slot-grid .spell-slot-group-heading strong,
+.spell-page-slot-grid .spell-slot-group--pact .spell-slot-group-heading strong,
+.spell-page-slot-grid .spell-slot-group--resource .spell-slot-group-heading strong { color: var(--gold-bright); }
+.spell-page-slot-grid .spell-slot-group-heading span,
+.spell-page-slot-grid .spell-slot-level,
+.spell-page-slot-grid .spell-slot-count,
+.spell-page-slot-grid .class-resource-name { color: var(--ink); }
+.spell-page-slot-grid .class-resource-recharge { color: var(--muted); }
+.spell-page-slot-grid .class-resource-row { border-top-color: rgba(209, 173, 97, 0.14); }
 .sheet-spells-panel { position: relative; margin-bottom: 28px; }
 .sheet-spell-slots { display: grid; gap: 9px; margin-bottom: 14px; padding-bottom: 13px; border-bottom: 1px solid rgba(91, 59, 29, 0.28); }
 .spell-slot-group { padding: 10px 11px; background: rgba(255, 252, 235, 0.46); border: 1px solid rgba(91, 59, 29, 0.35); border-radius: 5px; }
@@ -505,6 +524,7 @@ body {
 .attack-list .sheet-tooltip-term:focus::after { transform: translateY(0); }
 
 @media (max-width: 1220px) {
+  .spell-page-slot-grid { grid-template-columns: 1fr; }
   .team-member-selectors, .team-member-summaries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .builder-workspace { grid-template-columns: 1fr; }
   .form-card { grid-template-columns: 1fr; }

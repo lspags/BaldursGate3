@@ -865,8 +865,8 @@ def spell_choice_field(class_name: str, kind: str, label: str, options, limit: i
                 multi=True,
                 placeholder=f"Choose up to {limit}",
                 className="rich-dropdown spell-dropdown",
-                optionHeight=112,
-                maxHeight=430,
+                optionHeight=72,
+                maxHeight=504,
                 persistence=True,
                 persistence_type="session",
             ),
@@ -1187,6 +1187,13 @@ app.layout = html.Div(
                                 ],
                                 className="leveling-header",
                             ),
+                            html.Section([
+                                html.Div([
+                                    html.H3("Available spell slots & resources"),
+                                    html.Span("Based on your current class levels"),
+                                ], className="spell-card-heading"),
+                                html.Div(id="spell-page-slots", className="spell-page-slot-grid"),
+                            ], className="spell-card spell-page-slots"),
                             html.Div(id="spell-builder", className="spell-builder"),
                             html.Div(id="attack-builder", className="spell-builder attack-builder"),
                             html.Section([
@@ -4174,6 +4181,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
 
 @callback(
     Output("sheet-spell-slots", "children"),
+    Output("spell-page-slots", "children"),
     Input({"type": "level-class", "level": ALL}, "value"),
     Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "level-feat", "level": ALL}, "value"),
@@ -4282,7 +4290,8 @@ def render_spell_slots(level_classes, level_subclasses, feat_values):
 
     if resources:
         groups.append(class_resource_group(resources))
-    return groups or html.P("Spell slots and class resources will appear as your levels grant them.", className="sheet-empty spell-slot-empty")
+    content = groups or html.P("Spell slots and class resources will appear as your levels grant them.", className="sheet-empty spell-slot-empty")
+    return content, content
 
 
 @callback(
