@@ -1,4 +1,4 @@
-dash>=2.17,<4
+dash>=3.1,<4
 Flask-Login>=0.6,<1
 SQLAlchemy>=2,<3
 psycopg[binary]>=3.1,<4

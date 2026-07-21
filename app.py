@@ -875,6 +875,7 @@ def spell_choice_field(class_name: str, kind: str, label: str, options, limit: i
                 id={"type": "spell-choice", "class": class_name, "kind": kind, "limit": limit},
                 options=options,
                 multi=True,
+                closeOnSelect=False,
                 placeholder=f"Choose up to {limit}",
                 className="rich-dropdown spell-dropdown",
                 optionHeight=72,
