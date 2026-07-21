@@ -2992,7 +2992,7 @@ def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_leve
     hexed_weapon = bool(active_features & {"Hexed Weapon", "Pact Weapon"}) and slot == "melee main" and not thrown
     charge_bound = row.get("item") == "Charge-Bound Warhammer" and slot == "melee main" and not thrown and bool(active_features & {"Hexed Weapon", "Pact Weapon", "Bound Weapon"})
     ability = "Charisma" if hexed_weapon else "Dexterity" if ranged or (finesse or monk_weapon) and modifiers["Dexterity"] > modifiers["Strength"] else "Strength"
-    add_modifier = thrown or "off" not in slot or "Two-Weapon Fighting" in styles
+    add_modifier = (thrown or "off" not in slot or "Two-Weapon Fighting" in styles) and not row.get("improvised_throw")
     flat = modifiers[ability] if add_modifier else 0
     if "Rage" in active_features and (row["category"] == "melee" or thrown):
         flat += 3 if barbarian_level >= 9 else 2
@@ -3092,6 +3092,26 @@ def crit_result_card(normal_sequence, crit_sequence, threshold, advantage, crit_
     ], className="optimized-turn-result crit-result-card")
 
 
+def throwing_attack_row(row):
+    """Return the damage profile used when the equipped main-hand item is thrown."""
+    if not row or "thrown" in row.get("shared_properties", "").lower():
+        return row
+    try:
+        weight = float(row.get("weight_kg") or 0)
+    except (TypeError, ValueError):
+        weight = 0
+    damage = "2d4" if weight > 50 else "1d4" if weight >= 10 else "1"
+    return {
+        **row,
+        "damage": damage,
+        "damage_type": "Bludgeoning",
+        "enchantment": "",
+        "shared_properties": "Improvised Throw",
+        "special": "",
+        "improvised_throw": True,
+    }
+
+
 def weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand_present=False, thrown=False,
                               proficient=True, monk_weapon=False, elevation="Level", active_features=None):
     active_features = set(active_features or [])
@@ -3109,8 +3129,12 @@ def weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand
         versatile = re.search(r"(\d+d\d+)\s*\([^)]*\)\s*\+", properties, re.IGNORECASE)
         if versatile:
             damage = re.sub(r"^\d+d\d+", versatile.group(1), damage)
-    add_modifier = "off" not in slot or "Two-Weapon Fighting" in styles or thrown
-    modifier_text = f" {modifier:+d} {ability}" if add_modifier else " (no ability modifier on an off-hand damage roll)"
+    add_modifier = ("off" not in slot or "Two-Weapon Fighting" in styles or thrown) and not row.get("improvised_throw")
+    modifier_text = (
+        f" {modifier:+d} {ability}" if add_modifier else
+        " (weight-based improvised damage; no ability modifier)" if row.get("improvised_throw") else
+        " (no ability modifier on an off-hand damage roll)"
+    )
     duelling = 2 if "Duelling" in styles and row["category"] == "melee" and "main" in slot and not offhand_present and "two-handed" not in properties.lower() else 0
     attack_enchantment = formula_base(row.get("enchantment", ""))
     style_attack_bonus = 2 if ranged and "Archery" in styles else 0
@@ -3123,7 +3147,7 @@ def weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand
     if charge_bound:
         formula += "+1+1d6 Lightning"
     extras = f" Special: {row['special']}" if row.get("special") else ""
-    mode = "Thrown weapon attack" if thrown else ("Ranged weapon attack" if ranged else "Melee weapon attack")
+    mode = "Improvised throwing attack" if thrown and row.get("improvised_throw") else "Thrown weapon attack" if thrown else ("Ranged weapon attack" if ranged else "Melee weapon attack")
     proficiency_text = f"proficiency +{proficiency}" if proficient else "not proficient +0"
     binding_name = "Hexed Weapon" if "Hexed Weapon" in active_features else "Pact Weapon"
     ability_reason = binding_name if hexed_weapon else "Finesse" if finesse else "Monk weapon" if monk_weapon else "Ranged weapon" if ranged else "standard Strength weapon"
@@ -3258,10 +3282,10 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
         label = f"{title}: {row['item']}"
         basic_attacks.append(label)
         basic_descriptions[label] = describe_weapon(row, slot, modifiers, proficiency, offhand_present)
-        if slot == "melee main" and "thrown" in row.get("shared_properties", "").lower():
+        if slot == "melee main":
             throw_label = f"Throwing Attack: {row['item']}"
             basic_attacks.append(throw_label)
-            basic_descriptions[throw_label] = describe_weapon(row, slot, modifiers, proficiency, offhand_present, True)
+            basic_descriptions[throw_label] = describe_weapon(throwing_attack_row(row), slot, modifiers, proficiency, offhand_present, True)
     cards.insert(1 if styles else 0, html.Section([
         html.Div([html.H3("Basic attacks"), html.Span(f"{len(basic_attacks)} available")], className="spell-card-heading"),
         html.P(combat_action_tooltips(basic_attacks, basic_descriptions), className="attack-list"),
@@ -3487,9 +3511,11 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             continue
         naturally_thrown = "thrown" in row.get("shared_properties", "").lower()
         cleaver_thrown = "Elemental Cleaver" in active_features and "Rage" in active_features and slot == "melee main"
-        if not naturally_thrown and not cleaver_thrown:
-            continue
         seen_throwables.add(row["equipment_id"])
+        if cleaver_thrown and not naturally_thrown:
+            row = {**row, "shared_properties": row.get("shared_properties", "") + "; Thrown"}
+        else:
+            row = throwing_attack_row(row)
         per_hit, expression, ability, flat = weapon_damage_stats(
             row, modifiers, styles, slot, True, monk_level, active_features,
             counts.get("Barbarian", 0), thrown=True,
