@@ -2950,27 +2950,27 @@ def apply_charge_and_reverberation_effects(sequence, equipped_rows, starting_cha
     return total, list({(item["condition"], item["source"]): item for item in extra_conditions}.values())
 
 
-def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_level=0, active_features=None, barbarian_level=0):
+def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_level=0, active_features=None, barbarian_level=0, thrown=False):
     active_features = set(active_features or [])
     properties = row.get("shared_properties", "").lower()
     finesse = "finesse" in properties
-    ranged = row["category"] == "ranged"
+    ranged = row["category"] == "ranged" and not thrown
     monk_weapon = monk_level > 0 and "heavy" not in properties and "two-handed" not in properties
-    hexed_weapon = bool(active_features & {"Hexed Weapon", "Pact Weapon"}) and slot == "melee main"
-    charge_bound = row.get("item") == "Charge-Bound Warhammer" and slot == "melee main" and bool(active_features & {"Hexed Weapon", "Pact Weapon", "Bound Weapon"})
+    hexed_weapon = bool(active_features & {"Hexed Weapon", "Pact Weapon"}) and slot == "melee main" and not thrown
+    charge_bound = row.get("item") == "Charge-Bound Warhammer" and slot == "melee main" and not thrown and bool(active_features & {"Hexed Weapon", "Pact Weapon", "Bound Weapon"})
     ability = "Charisma" if hexed_weapon else "Dexterity" if ranged or (finesse or monk_weapon) and modifiers["Dexterity"] > modifiers["Strength"] else "Strength"
-    add_modifier = "off" not in slot or "Two-Weapon Fighting" in styles
+    add_modifier = thrown or "off" not in slot or "Two-Weapon Fighting" in styles
     flat = modifiers[ability] if add_modifier else 0
-    if "Rage" in active_features and row["category"] == "melee":
+    if "Rage" in active_features and (row["category"] == "melee" or thrown):
         flat += 3 if barbarian_level >= 9 else 2
     if charge_bound:
         flat += 1
-    if "Duelling" in styles and row["category"] == "melee" and "main" in slot and not offhand_present and "two-handed" not in properties:
+    if not thrown and "Duelling" in styles and row["category"] == "melee" and "main" in slot and not offhand_present and "two-handed" not in properties:
         flat += 2
     expression = row.get("damage", "1")
     if charge_bound:
         expression += "; 1d6"
-    if row["category"] == "melee" and "versatile" in properties and not offhand_present and "main" in slot:
+    if not thrown and row["category"] == "melee" and "versatile" in properties and not offhand_present and "main" in slot:
         versatile = re.search(r"(\d+d\d+)\s*\([^)]*\)\s*\+", row.get("shared_properties", ""), re.IGNORECASE)
         if versatile:
             expression = re.sub(r"^\d+d\d+", versatile.group(1), expression)
@@ -3008,9 +3008,9 @@ def optimizer_attack_count(name, detail, cantrip_scale=1):
     if "Flurry of Blows" in text:
         return 2
     multiplier = re.search(r"(?:×|Ã—|x)(\d+)", name)
-    if multiplier and any(term in text for term in ("Attack", "Unarmed")):
+    if multiplier and any(term in text for term in ("Attack", "Unarmed", "Throwing")):
         return int(multiplier.group(1))
-    if any(term in text for term in ("Melee Attack", "Ranged Attack", "Unarmed Attack", "Off-Hand", "Booming Blade", "Smite", "Strike")):
+    if any(term in text for term in ("Melee Attack", "Ranged Attack", "Throwing Attack", "Unarmed Attack", "Off-Hand", "Booming Blade", "Smite", "Strike")):
         return 1
     spell = next((row for row in SPELLS if row["spell"] in name), None)
     if spell and "attack roll" in spell.get("attack_save", "").lower():
@@ -3410,6 +3410,72 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
                 ranged_attack = attack_data
             else:
                 melee_attack = attack_data
+
+    # Throwing is its own weapon attack mode. It uses Strength unless the
+    # thrown weapon is Finesse (or a Monk weapon), and receives modifiers that
+    # explicitly apply to thrown attacks.
+    equipped_rows = [EQUIPMENT_BY_ID.get(value) for value in (
+        melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id,
+        armour_id, handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id,
+    ) if value]
+    equipped_names = {row["item"] for row in equipped_rows if row}
+    throwing_boosts = []
+    if "Ring of Flinging" in equipped_names:
+        throwing_boosts.append(("1d4", "Ring of Flinging"))
+    if "Gloves of Uninhibited Kushigo" in equipped_names:
+        throwing_boosts.append(("1d4", "Gloves of Uninhibited Kushigo"))
+    tavern_brawler = "Tavern Brawler" in (feat_values or [])
+    seen_throwables = set()
+    for row, slot in ((melee_main, "melee main"), (melee_off, "melee off"),
+                      (ranged_main, "ranged main"), (ranged_off, "ranged off")):
+        if not row or row["equipment_id"] in seen_throwables:
+            continue
+        naturally_thrown = "thrown" in row.get("shared_properties", "").lower()
+        cleaver_thrown = "Elemental Cleaver" in active_features and "Rage" in active_features and slot == "melee main"
+        if not naturally_thrown and not cleaver_thrown:
+            continue
+        seen_throwables.add(row["equipment_id"])
+        per_hit, expression, ability, flat = weapon_damage_stats(
+            row, modifiers, styles, slot, True, monk_level, active_features,
+            counts.get("Barbarian", 0), thrown=True,
+        )
+        notes = []
+        for bonus_expression, source in throwing_boosts:
+            per_hit = add_damage_stats(per_hit, damage_expression_stats(bonus_expression))
+            notes.append(f"{source} +{bonus_expression}")
+        if tavern_brawler:
+            per_hit = tuple(value + modifiers["Strength"] for value in per_hit)
+            notes.append(f"Tavern Brawler {modifiers['Strength']:+d}")
+        if row["item"] == "Nyrulna":
+            per_hit = add_damage_stats(per_hit, damage_expression_stats("3d4"))
+            notes.append("Zephyr Connection +3d4 Thunder to the target-area explosion")
+        if row["item"] == "Dwarven Thrower" and "Dwarf" in f"{race or ''} {subrace or ''}":
+            per_hit = add_damage_stats(per_hit, damage_expression_stats("1d8"))
+            notes.append("Dwarven Thrower +1d8 Bludgeoning for a dwarf")
+        if "Hexblade's Curse" in active_features:
+            curse_bonus = 4 if level >= 9 else 3 if level >= 5 else 2
+            per_hit = tuple(value + curse_bonus for value in per_hit)
+            notes.append(f"Hexblade's Curse +{curse_bonus}")
+        cleaver_active = cleaver_thrown and elemental_cleaver_type
+        if cleaver_active:
+            cleaver_stats = damage_expression_stats("1d6")
+            if "Wet" in (target_conditions or []) and elemental_cleaver_type in {"Cold", "Lightning"}:
+                cleaver_stats = tuple(value * 2 for value in cleaver_stats)
+            per_hit = add_damage_stats(per_hit, cleaver_stats)
+            notes.append(f"Elemental Cleaver +1d6 {elemental_cleaver_type}")
+        stats = tuple(value * attacks_per_action for value in per_hit)
+        damage_types = damage_types_in(row.get("damage_type", ""))
+        if row["item"] == "Nyrulna":
+            damage_types.append("Thunder")
+        detail = f" {expression}{flat:+d} per hit using {ability}. Damage type: {', '.join(dict.fromkeys(damage_types)) or 'Weapon'}."
+        if notes:
+            detail += f" Includes {', '.join(notes)}."
+        components = [{"name": f"Throwing Attack: {row['item']}", "stats": per_hit, "detail": detail} for _ in range(attacks_per_action)]
+        candidate = {
+            "name": f"Throwing Attack ×{attacks_per_action}: {row['item']}",
+            "stats": stats, "detail": detail, "components": components,
+        }
+        action_candidates.append(candidate)
 
     rogue_level = counts.get("Rogue", 0)
     sneak_general = "Sneak Attack" in active_features or bool({"Advantage", "Hidden", "Invisible"} & set(attacker_conditions or [])) or bool({"Threatened by Ally", "Restrained"} & set(target_conditions or []))
