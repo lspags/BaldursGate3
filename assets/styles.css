@@ -31,6 +31,11 @@ body {
 .subtitle { margin: 0; color: var(--muted); font-size: 1.05rem; }
 .leveling-title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .leveling-title-row h2 { margin-right: auto; }
+.leveling-header-actions { display: flex; flex: 0 0 auto; gap: 9px; align-items: center; }
+.level-up-button { padding: 9px 15px; color: #fff4d2; background: rgba(92, 110, 58, .78); border: 1px solid rgba(218, 194, 117, .58); border-radius: 6px; font: inherit; font-size: .72rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.level-up-button:hover:not(:disabled) { background: #718643; border-color: var(--gold); }
+.level-up-button:disabled { opacity: .4; cursor: not-allowed; }
+.level-up-button:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
 .clear-leveling-button { flex: 0 0 auto; padding: 9px 15px; color: #f1dcc0; background: rgba(126, 38, 41, .7); border: 1px solid rgba(240, 210, 144, .48); border-radius: 6px; font: inherit; font-size: .72rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
 .clear-leveling-button:hover { background: #8f2d31; border-color: var(--gold); }
 .clear-leveling-button:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
@@ -510,6 +515,7 @@ body {
   .clear-character-button { position: static; margin-top: 14px; }
   .team-member-selectors, .team-member-summaries { grid-template-columns: 1fr; }
   .leveling-title-row { align-items: flex-start; flex-direction: column; }
+  .leveling-header-actions { width: 100%; flex-wrap: wrap; }
   .form-card, .summary-card { padding: 20px; }
   .character-sheet { min-height: 620px; padding: 30px 24px 26px; }
   .sheet-identity, .sheet-grid { grid-template-columns: 1fr; }

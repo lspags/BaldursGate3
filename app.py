@@ -1095,7 +1095,10 @@ app.layout = html.Div(
                                     html.P("LEVEL-BY-LEVEL BUILD", className="eyebrow"),
                                     html.Div([
                                         html.H2("Choose a class at each character level"),
-                                        html.Button("Clear All", id="clear-leveling", n_clicks=0, className="clear-leveling-button", title="Reset all class levels, subclasses, feats, and level choices"),
+                                        html.Div([
+                                            html.Button("Level Up", id="level-up", n_clicks=0, disabled=True, className="level-up-button", title="Add another level in the previous class"),
+                                            html.Button("Clear All", id="clear-leveling", n_clicks=0, className="clear-leveling-button", title="Reset all class levels, subclasses, feats, and level choices"),
+                                        ], className="leveling-header-actions"),
                                     ], className="leveling-title-row"),
                                     html.P(
                                         "Each new row unlocks after the previous level is assigned. Choosing a different class creates a multiclass build.",
@@ -1791,6 +1794,36 @@ def clear_leveling(_clicks, class_ids, subclass_ids, feat_ids, feat_choice_ids, 
         [None] * len(class_ids or []), [None] * len(subclass_ids or []), [None] * len(feat_ids or []),
         [None] * len(feat_choice_ids or []), [None] * len(class_choice_ids or []),
     )
+
+
+@callback(
+    Output({"type": "level-class", "level": ALL}, "value", allow_duplicate=True),
+    Input("level-up", "n_clicks"),
+    State({"type": "level-class", "level": ALL}, "value"),
+    prevent_initial_call=True,
+)
+def add_same_class_level(_clicks, class_values):
+    values = list(class_values or [])
+    if not values or not values[0]:
+        return (values + [None] * 12)[:12]
+    values.extend([None] * (12 - len(values)))
+    try:
+        next_level = values.index(None)
+    except ValueError:
+        return values[:12]
+    if next_level == 0:
+        return values[:12]
+    values[next_level] = values[next_level - 1]
+    return values[:12]
+
+
+@callback(
+    Output("level-up", "disabled"),
+    Input({"type": "level-class", "level": ALL}, "value"),
+)
+def disable_level_up(class_values):
+    values = list(class_values or [])
+    return not values or not values[0] or all(values[:12])
 
 
 @callback(
