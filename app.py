@@ -374,13 +374,14 @@ def formula_base(value: str) -> int:
     return int(match.group()) if match else 0
 
 
-def option_label(title: str, details: list[str], title_class: str = "") -> html.Div:
+def option_label(title: str, details: list[str], title_class: str = "", tooltip: str = "") -> html.Div:
     return html.Div(
         [
             html.Span(title, className=f"option-title {title_class}".strip()),
             html.Span(" • ".join(details), className="option-detail") if details else None,
         ],
         className="dropdown-option",
+        title=tooltip or None,
     )
 
 
@@ -834,7 +835,18 @@ def spell_option(row: dict[str, str]) -> dict[str, Any]:
         row["cast_time"],
         row["damage_effect"],
     )
-    return {"label": option_label(row["spell"], details), "value": row["spell"], "search": f"{row['spell']} {' '.join(details)}"}
+    tooltip = " | ".join(meaningful(
+        row["spell"],
+        f"Description: {row.get('description', '')}" if row.get("description", "") else "",
+        f"Damage/effect: {row.get('damage_effect', '')}" if row.get("damage_effect", "") not in {"", "-"} else "Damage/effect: None",
+        f"Level: {'Cantrip' if row['level'] == 'C' else row['level']}",
+        f"School: {row.get('school', '')}",
+        f"Cast time: {row.get('cast_time', '')}",
+        f"Duration: {row.get('duration', '')}" if row.get("duration", "") not in {"", "-"} else "",
+        f"Range/area: {row.get('range_area', '')}" if row.get("range_area", "") not in {"", "-"} else "",
+        f"Attack/save: {row.get('attack_save', '')}" if row.get("attack_save", "") not in {"", "-"} else "",
+    ))
+    return {"label": option_label(row["spell"], details, tooltip=tooltip), "value": row["spell"], "search": f"{row['spell']} {' '.join(details)}"}
 
 
 def spell_profile(class_name: str, class_level: int, ability_data, feat_effects, equipment_effects=None) -> dict[str, Any] | None:
