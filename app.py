@@ -70,7 +70,7 @@ EQUIPMENT_BY_ID = {row["equipment_id"]: row for row in EQUIPMENT}
 
 ACT_ONE_LOCATION_TERMS = ("emerald grove", "the hollow", "sacred pool", "blighted village", "goblin camp", "shattered sanctum", "risen road", "waukeen", "zhentarim", "underdark", "grymforge", "adamantine forge", "crèche", "creche", "rosymorn", "mountain pass", "arcane tower", "myconid", "sunlit wetlands", "overgrown", "ravaged beach")
 ACT_TWO_LOCATION_TERMS = ("last light", "moonrise", "gauntlet of shar", "shadow-cursed", "reithwin", "house of healing", "mason's guild", "waning moon", "mind flayer colony", "shadowfell", "sharran sanctuary")
-ACT_THREE_LOCATION_TERMS = ("rivington", "wyrm's", "lower city", "baldur's gate", "stormshore", "sorcerous sundries", "house of hope", "guildhall", "murder tribunal", "bhaal temple", "circus of the last days", "counting house", "steel watch", "iron throne", "house of grief", "cazador", "ramazith", "devil's fee", "danthelon", "facemaker", "highberry", "lora's house", "dragon's sanctum", "undercity")
+ACT_THREE_LOCATION_TERMS = ("rivington", "jungle", "wyrm's", "lower city", "baldur's gate", "stormshore", "sorcerous sundries", "house of hope", "guildhall", "murder tribunal", "bhaal temple", "circus of the last days", "counting house", "steel watch", "iron throne", "house of grief", "cazador", "ramazith", "devil's fee", "danthelon", "facemaker", "highberry", "lora's house", "dragon's sanctum", "undercity")
 
 
 def equipment_earliest_act(row):
