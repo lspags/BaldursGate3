@@ -408,6 +408,10 @@ body {
 .account-link { color: var(--gold-bright); text-decoration: none; }
 .account-link:hover { text-decoration: underline; }
 .build-controls { display: grid; grid-template-columns: minmax(160px, .7fr) minmax(260px, 1.3fr) repeat(3, auto); gap: 9px; align-items: center; }
+.share-build-controls { display: grid; grid-template-columns: auto auto minmax(260px,1fr) auto; gap: 9px; align-items: center; }
+.share-link-input { min-width: 0; padding: 10px 11px; color: var(--ink); background: rgba(15,15,18,.62); border: 1px solid rgba(209,173,97,.32); border-radius: 5px; }
+.share-link-copy { color: var(--gold-bright); }
+.share-message:not(:empty) { color: var(--gold-bright); font-size: .76rem; }
 .build-name-input { min-width: 0; padding: 10px 11px; color: var(--ink); background: rgba(15, 15, 18, .62); border: 1px solid rgba(209, 173, 97, .32); border-radius: 5px; }
 .build-dropdown { min-width: 0; }
 .build-action-button { padding: 10px 14px; color: #fff8e7; background: #6f552d; border: 1px solid var(--gold); border-radius: 5px; cursor: pointer; }
@@ -511,6 +515,8 @@ body {
   .turn-condition-grid { grid-template-columns: 1fr; }
   .equipment-dropdown .Select-menu-outer { width: 100%; min-width: 100%; }
   .build-controls { grid-template-columns: 1fr 1fr; }
+  .share-build-controls { grid-template-columns: 1fr 1fr; }
+  .share-link-input { grid-column: 1 / -1; }
 }
 
 @media (max-width: 520px) {

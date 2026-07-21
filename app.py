@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_update
+from flask import request
 
 from persistence import (
-    AUTH_ENABLED, delete_build, delete_team, init_persistence, list_builds, list_teams, load_build,
-    save_build, save_team, user_identity,
+    AUTH_ENABLED, create_build_share, delete_build, delete_team, init_persistence, list_builds, list_teams, load_build,
+    revoke_build_share, save_build, save_team, user_identity,
 )
 
 
@@ -940,6 +941,13 @@ app.layout = html.Div(
                 html.Button("Open", id="open-build", n_clicks=0, className="build-action-button"),
                 html.Button("Delete", id="delete-build", n_clicks=0, className="build-action-button build-delete-button"),
             ], id="build-controls", className="build-controls", style={"display": "none"}),
+            html.Div([
+                html.Button("Share", id="share-build", n_clicks=0, className="build-action-button"),
+                html.Button("Revoke", id="revoke-share", n_clicks=0, className="build-action-button build-delete-button"),
+                dcc.Input(id="share-build-link", readOnly=True, placeholder="Create a share link", className="share-link-input"),
+                dcc.Clipboard(target_id="share-build-link", title="Copy share link", className="share-link-copy"),
+            ], id="share-build-controls", className="share-build-controls", style={"display": "none"}),
+            html.Div(id="share-message", className="share-message"),
             html.Div(id="build-message", className="build-message", role="status", **{"aria-live": "polite"}),
             dcc.Interval(id="build-message-dismiss", interval=4500, n_intervals=0, disabled=True, max_intervals=1),
             dcc.ConfirmDialog(
@@ -1450,6 +1458,34 @@ def render_account_status(_interval):
 def show_workspace_mode(_interval):
     user_id, _ = user_identity()
     return {} if user_id else {"display": "none"}
+
+
+@callback(Output("share-build-controls", "style"), Input("account-refresh", "n_intervals"))
+def show_share_controls(_interval):
+    user_id, _ = user_identity()
+    return {} if user_id else {"display": "none"}
+
+
+@callback(
+    Output("share-build-link", "value"), Output("share-message", "children"),
+    Input("share-build", "n_clicks"), Input("revoke-share", "n_clicks"),
+    State("saved-build-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def manage_build_share(_share, _revoke, build_id):
+    user_id, _ = user_identity()
+    if not user_id:
+        return no_update, "Sign in to share builds."
+    if not build_id:
+        return no_update, "Save or select a build before sharing it."
+    if ctx.triggered_id == "revoke-share":
+        revoked = revoke_build_share(user_id, int(build_id))
+        return "", "Share link revoked." if revoked else "This build does not have an active share link."
+    token = create_build_share(user_id, int(build_id))
+    if not token:
+        return no_update, "The selected build could not be found."
+    link = request.host_url.rstrip("/") + f"/share/{token}"
+    return link, "Read-only share link created. Copy it and send it to anyone."
 
 
 @callback(
