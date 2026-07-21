@@ -49,9 +49,9 @@ def load_equipment_catalogue() -> list[dict[str, str]]:
     records, seen = [], set()
     for path in sorted(EQUIPMENT_DIR.glob("*.csv")):
         file_key = path.stem
-        if file_key == "light_sources" or file_key == "cloaks":
+        if file_key == "light_sources":
             continue
-        if file_key in {"amulets", "armour", "clothing", "footwear", "handwear", "headwear", "rings", "shields"}:
+        if file_key in {"amulets", "armour", "cloaks", "clothing", "footwear", "handwear", "headwear", "rings", "shields"}:
             category = "shield" if file_key == "shields" else file_key
         else:
             category = "ranged" if file_key in RANGED_WEAPON_FILES else "melee"
@@ -402,7 +402,7 @@ def equipment_type_label(row: dict[str, str]) -> str:
         return f"{armour_type} Armour"
     return {
         "amulets": "Necklace", "rings": "Ring", "handwear": "Handwear",
-        "footwear": "Footwear", "headwear": "Headwear", "clothing": "Clothing",
+        "footwear": "Footwear", "headwear": "Headwear", "cloaks": "Cape", "clothing": "Clothing",
         "armour": "Armour", "shield": "Shield",
     }.get(row["category"], row.get("item_type", ""))
 
@@ -1230,6 +1230,7 @@ app.layout = html.Div(
                                     equipment_field("Armour", "equipment-armour"),
                                     equipment_field("Handwear", "equipment-handwear"),
                                     equipment_field("Footwear", "equipment-footwear"),
+                                    equipment_field("Cape", "equipment-cape"),
                                     equipment_field("Necklace", "equipment-necklace"),
                                     equipment_field("Ring 1", "equipment-ring-1"),
                                     equipment_field("Ring 2", "equipment-ring-2"),
@@ -1589,6 +1590,7 @@ def selected_build_name(build_id):
     Output("equipment-ranged-main", "value", allow_duplicate=True), Output("equipment-ranged-off", "value", allow_duplicate=True),
     Output("equipment-headwear", "value", allow_duplicate=True), Output("equipment-armour", "value", allow_duplicate=True),
     Output("equipment-handwear", "value", allow_duplicate=True), Output("equipment-footwear", "value", allow_duplicate=True),
+    Output("equipment-cape", "value", allow_duplicate=True),
     Output("equipment-necklace", "value", allow_duplicate=True), Output("equipment-ring-1", "value", allow_duplicate=True),
     Output("equipment-ring-2", "value", allow_duplicate=True),
     Output("turn-visibility", "value", allow_duplicate=True), Output("turn-elevation", "value", allow_duplicate=True),
@@ -1617,6 +1619,7 @@ def selected_build_name(build_id):
     State("equipment-ranged-main", "value"), State("equipment-ranged-off", "value"),
     State("equipment-headwear", "value"), State("equipment-armour", "value"),
     State("equipment-handwear", "value"), State("equipment-footwear", "value"),
+    State("equipment-cape", "value"),
     State("equipment-necklace", "value"), State("equipment-ring-1", "value"), State("equipment-ring-2", "value"),
     State("turn-visibility", "value"), State("turn-elevation", "value"),
     State("turn-attacker-conditions", "value"), State("turn-target-conditions", "value"),
@@ -1630,7 +1633,7 @@ def selected_build_name(build_id):
 def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, build_name, character_name, race, subrace, background,
                         human_skill, abilities, classes, subclasses, feats, feat_choice_values, feat_choice_ids,
                         class_choice_values, class_choice_ids, spell_values, spell_ids, melee_main, melee_off,
-                        ranged_main, ranged_off, headwear, armour, handwear, footwear, necklace, ring_1, ring_2,
+                        ranged_main, ranged_off, headwear, armour, handwear, footwear, cape, necklace, ring_1, ring_2,
                         visibility, elevation, attacker_conditions, target_conditions, active_features,
                         cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items, pending_overwrite):
     # The first three restore outputs are ALL-pattern level controls and must
@@ -1640,7 +1643,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
         [no_update] * 12,
         [no_update] * 12,
         [no_update] * 12,
-        *([no_update] * 21),
+        *([no_update] * 22),
     ]
     user_id, _ = user_identity()
     if not user_id:
@@ -1678,7 +1681,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             (payload.get("feats") or [None] * 12)[:12],
             equipment.get("melee_main"), equipment.get("melee_off"), equipment.get("ranged_main"), equipment.get("ranged_off"),
             equipment.get("headwear"), equipment.get("armour"), equipment.get("handwear"), equipment.get("footwear"),
-            equipment.get("necklace"), equipment.get("ring_1"), equipment.get("ring_2"),
+            equipment.get("cape"), equipment.get("necklace"), equipment.get("ring_1"), equipment.get("ring_2"),
             conditions.get("visibility", "No condition"), conditions.get("elevation", "No condition"),
             conditions.get("attacker", []), conditions.get("target", []), conditions.get("active_features", []),
             conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
@@ -1697,7 +1700,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
         "spell_choices": packed_pattern_values(spell_values, spell_ids),
         "equipment": {"melee_main": melee_main, "melee_off": melee_off, "ranged_main": ranged_main,
                       "ranged_off": ranged_off, "headwear": headwear, "armour": armour, "handwear": handwear,
-                      "footwear": footwear, "necklace": necklace, "ring_1": ring_1, "ring_2": ring_2},
+                      "footwear": footwear, "cape": cape, "necklace": necklace, "ring_1": ring_1, "ring_2": ring_2},
         "conditions": {"visibility": visibility, "elevation": elevation, "attacker": attacker_conditions,
                        "target": target_conditions, "active_features": active_features, "cleaver_type": cleaver_type,
                        "lightning_charges": lightning_charges, "limited_resources": limited_resources},
@@ -1842,6 +1845,7 @@ def update_human_versatility(race, selected_skill):
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
     State("item-location-checklist", "value"),
 )
@@ -2327,6 +2331,7 @@ def update_ability_state(_step_clicks, _bonus_clicks, data):
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
 )
 def calculate_equipment_effects(*equipment_ids):
@@ -3134,6 +3139,7 @@ def show_lightning_charge_selector(equipment_effects):
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
     Input({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"),
     Input("turn-target-conditions", "value"),
@@ -3145,7 +3151,7 @@ def show_lightning_charge_selector(equipment_effects):
 )
 def optimize_turn(use_limited, class_values, subclass_values, ability_data, feat_effects, equipment_effects, class_choice_values,
                   melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
-                  handwear_id, footwear_id, necklace_id, ring_1_id, ring_2_id, spell_values, target_conditions,
+                  handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id, spell_values, target_conditions,
                   active_features, elemental_cleaver_type, lightning_charges, class_choice_ids, spell_ids):
     active_classes = [value for value in class_values or [] if value]
     if not active_classes:
@@ -3262,7 +3268,7 @@ def optimize_turn(use_limited, class_values, subclass_values, ability_data, feat
     for values, item_id in zip(spell_values or [], spell_ids or []):
         selections.setdefault(item_id["kind"], []).extend(values or [])
     equipped_ids = [melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
-                    handwear_id, footwear_id, necklace_id, ring_1_id, ring_2_id]
+                    handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id]
     equipment_spell_grants = equipment_granted_spells(equipped_ids)
     equipment_spell_sources = {
         spell: [item for item, spells in equipment_spell_grants.items() if spell in spells]
@@ -3585,12 +3591,13 @@ def render_spell_slots(level_classes, level_subclasses, feat_values):
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
     State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
 )
 def render_sheet_spells(values, level_classes, level_subclasses, class_choice_values, race, subrace, ability_data, feat_effects, equipment_effects,
                         melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
-                        handwear_id, footwear_id, necklace_id, ring_1_id, ring_2_id, ids):
+                        handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id, ids):
     selections = {}
     for value, item_id in zip(values or [], ids or []):
         selections[(item_id["class"], item_id["kind"])] = list(value or [])[:int(item_id["limit"])]
@@ -3625,7 +3632,7 @@ def render_sheet_spells(values, level_classes, level_subclasses, class_choice_va
             cards.append(html.Div([html.Strong(class_name, className="sheet-spell-class"), *rows], className="sheet-spell-class-card"))
     equipment_grants = equipment_granted_spells([
         melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
-        handwear_id, footwear_id, necklace_id, ring_1_id, ring_2_id,
+        handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id,
     ])
     if equipment_grants:
         equipment_rows = [
@@ -3702,13 +3709,14 @@ def static_item_ac_bonus(row: dict[str, str], slot: str) -> int:
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
 )
 def calculate_armour_class(ability_data, feat_effects, equipment_effects, class_choices, *item_ids):
     ability_data, feat_effects = ability_data or {}, feat_effects or {}
     dexterity = final_ability_scores(ability_data, feat_effects, equipment_effects)["Dexterity"]
     dexterity_bonus = ability_modifier(dexterity)
-    slots = ["melee main", "melee off", "ranged main", "ranged off", "headwear", "armour", "handwear", "footwear", "necklace", "ring 1", "ring 2"]
+    slots = ["melee main", "melee off", "ranged main", "ranged off", "headwear", "armour", "handwear", "footwear", "cape", "necklace", "ring 1", "ring 2"]
     equipped = [(slot, EQUIPMENT_BY_ID.get(item_id)) for slot, item_id in zip(slots, item_ids) if EQUIPMENT_BY_ID.get(item_id)]
 
     armour_row = next((row for slot, row in equipped if slot == "armour" and row["category"] == "armour"), None)
@@ -3767,6 +3775,7 @@ def calculate_action_economy(class_values, subclass_values):
     Output("equipment-ranged-off", "disabled"), Output("equipment-ranged-off", "value"),
     Output("equipment-headwear", "options"), Output("equipment-armour", "options"),
     Output("equipment-handwear", "options"), Output("equipment-footwear", "options"),
+    Output("equipment-cape", "options"),
     Output("equipment-necklace", "options"), Output("equipment-ring-1", "options"), Output("equipment-ring-2", "options"),
     Input("proficient-equipment-only", "value"), Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
     Input({"type": "level-class", "level": ALL}, "value"), Input({"type": "level-subclass", "level": ALL}, "value"),
@@ -3812,6 +3821,7 @@ def update_equipment_options(filter_values, race, subrace, classes, subclasses, 
         options(by_category("ranged")), ranged_off_options, ranged_off_disabled, ranged_off_value,
         options(by_category("headwear")), options(by_category("armour", "clothing")),
         options(by_category("handwear")), options(by_category("footwear")),
+        options(by_category("cloaks")),
         options(by_category("amulets")), options(by_category("rings")), options(by_category("rings")),
     )
 
@@ -3822,10 +3832,11 @@ def update_equipment_options(filter_values, race, subrace, classes, subclasses, 
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
 )
 def render_sheet_equipment(*values):
-    labels = ["Melee", "Melee off hand", "Ranged", "Ranged off hand", "Headwear", "Armour", "Gloves", "Boots", "Necklace", "Ring 1", "Ring 2"]
+    labels = ["Melee", "Melee off hand", "Ranged", "Ranged off hand", "Headwear", "Armour", "Gloves", "Boots", "Cape", "Necklace", "Ring 1", "Ring 2"]
     rows = []
     for label, item_id in zip(labels, values):
         row = EQUIPMENT_BY_ID.get(item_id)
@@ -3847,6 +3858,7 @@ def render_sheet_equipment(*values):
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
 )
 def render_sheet_defences(race, subrace, class_values, subclass_values, feat_values, *item_ids):
@@ -3878,7 +3890,7 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
         if feat_row:
             merge(defensive_effects(feat_row["description"], f"Feat — {feat}"))
 
-    slot_names = ["Melee main hand", "Melee off hand", "Ranged main hand", "Ranged off hand", "Headwear", "Armour", "Handwear", "Footwear", "Necklace", "Ring 1", "Ring 2"]
+    slot_names = ["Melee main hand", "Melee off hand", "Ranged main hand", "Ranged off hand", "Headwear", "Armour", "Handwear", "Footwear", "Cape", "Necklace", "Ring 1", "Ring 2"]
     for slot, item_id in zip(slot_names, item_ids):
         row = EQUIPMENT_BY_ID.get(item_id)
         if row:
