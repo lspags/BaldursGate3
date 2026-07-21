@@ -73,6 +73,16 @@ ACT_ONE_LOCATION_TERMS = ("emerald grove", "the hollow", "sacred pool", "blighte
 ACT_TWO_LOCATION_TERMS = ("last light", "moonrise", "gauntlet of shar", "shadow-cursed", "reithwin", "house of healing", "mason's guild", "waning moon", "mind flayer colony", "shadowfell", "sharran sanctuary")
 ACT_THREE_LOCATION_TERMS = ("rivington", "jungle", "forge of the nine", "wyrm's", "lower city", "baldur's gate", "stormshore", "sorcerous sundries", "house of hope", "guildhall", "murder tribunal", "bhaal temple", "circus of the last days", "counting house", "steel watch", "iron throne", "house of grief", "cazador", "ramazith", "devil's fee", "danthelon", "facemaker", "highberry", "lora's house", "dragon's sanctum", "undercity")
 
+# Location strings in the equipment CSVs are usually more specific than their
+# parent regions. Keep those named sublocations mapped explicitly so they do
+# not fall through to the Act One default.
+ACT_ONE_LOCATION_TERMS += ("dread hollow", "secluded cove", "ebonlake grotto", "whispering depths")
+ACT_TWO_LOCATION_TERMS += ("ruined battlefield", "house in deep shadows", "shadowed battlefield")
+ACT_THREE_LOCATION_TERMS += (
+    "philgrave's mansion", "lady jannath's estate", "elfsong tavern", "open hand temple",
+    "abandoned windmill", "astral plane", "blushing mermaid", "beehive general goods", "szarr palace",
+)
+
 
 def equipment_earliest_act(row):
     location = (row.get("where_to_find") or "").lower()
