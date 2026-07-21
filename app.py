@@ -71,18 +71,25 @@ EQUIPMENT_BY_ID = {row["equipment_id"]: row for row in EQUIPMENT}
 
 ACT_ONE_LOCATION_TERMS = ("emerald grove", "the hollow", "sacred pool", "blighted village", "goblin camp", "shattered sanctum", "risen road", "waukeen", "zhentarim", "underdark", "grymforge", "adamantine forge", "crèche", "creche", "rosymorn", "mountain pass", "arcane tower", "myconid", "sunlit wetlands", "overgrown", "ravaged beach")
 ACT_TWO_LOCATION_TERMS = ("last light", "moonrise", "gauntlet of shar", "shadow-cursed", "reithwin", "house of healing", "mason's guild", "waning moon", "mind flayer colony", "shadowfell", "sharran sanctuary")
-ACT_THREE_LOCATION_TERMS = ("rivington", "jungle", "wyrm's", "lower city", "baldur's gate", "stormshore", "sorcerous sundries", "house of hope", "guildhall", "murder tribunal", "bhaal temple", "circus of the last days", "counting house", "steel watch", "iron throne", "house of grief", "cazador", "ramazith", "devil's fee", "danthelon", "facemaker", "highberry", "lora's house", "dragon's sanctum", "undercity")
+ACT_THREE_LOCATION_TERMS = ("rivington", "jungle", "forge of the nine", "wyrm's", "lower city", "baldur's gate", "stormshore", "sorcerous sundries", "house of hope", "guildhall", "murder tribunal", "bhaal temple", "circus of the last days", "counting house", "steel watch", "iron throne", "house of grief", "cazador", "ramazith", "devil's fee", "danthelon", "facemaker", "highberry", "lora's house", "dragon's sanctum", "undercity")
 
 
 def equipment_earliest_act(row):
     location = (row.get("where_to_find") or "").lower()
+    candidate_acts = [
+        act for act, patterns in {
+            1: (r"\bact\s+(?:one|1)\b",),
+            2: (r"\bact\s+(?:two|2)\b",),
+            3: (r"\bact\s+(?:three|3)\b",),
+        }.items() if any(re.search(pattern, location, re.IGNORECASE) for pattern in patterns)
+    ]
     if any(term in location for term in ACT_ONE_LOCATION_TERMS):
-        return 1
+        candidate_acts.append(1)
     if any(term in location for term in ACT_TWO_LOCATION_TERMS):
-        return 2
+        candidate_acts.append(2)
     if any(term in location for term in ACT_THREE_LOCATION_TERMS):
-        return 3
-    return 1
+        candidate_acts.append(3)
+    return min(candidate_acts) if candidate_acts else 1
 ABILITIES = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
 DAMAGE_TYPES = ["Acid", "Bludgeoning", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Piercing", "Poison", "Psychic", "Radiant", "Slashing", "Thunder"]
 POINT_BUY_COSTS = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
