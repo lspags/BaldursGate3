@@ -1241,7 +1241,7 @@ app.layout = html.Div(
                                     ], className="field"),
                                 html.Div([html.Label("Target conditions"), dcc.Dropdown(
                                         id="turn-target-conditions", multi=True, placeholder="Choose target conditions",
-                                        options=["Below Maximum HP", "Large or Larger", "Hunter's Marked", "Bleeding", "Burning", "Charmed", "Frightened", "Poisoned", "Prone", "Restrained", "Threatened by Ally", "Wet", "Will Move"],
+                                        options=["Below Maximum HP", "Large or Larger", "Fiend or Undead", "Hunter's Marked", "Bleeding", "Burning", "Charmed", "Frightened", "Poisoned", "Prone", "Restrained", "Threatened by Ally", "Wet", "Will Move"],
                                         className="rich-dropdown", persistence=True, persistence_type="session",
                                     )], className="field"),
                                     html.Div([
@@ -3489,6 +3489,26 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     progression = progression_features_by_class(class_values, subclass_values)
     features = {feature for values in progression.values() for feature in values}
 
+    full_caster_level = sum(counts.get(name, 0) for name in ["Bard", "Cleric", "Druid", "Sorcerer", "Wizard"])
+    half_caster_level = counts.get("Paladin", 0) // 2 + counts.get("Ranger", 0) // 2
+    third_caster_level = 0
+    if ("Fighter", "Eldritch Knight") in selected_subclasses:
+        third_caster_level += counts.get("Fighter", 0) // 3
+    if ("Rogue", "Arcane Trickster") in selected_subclasses:
+        third_caster_level += counts.get("Rogue", 0) // 3
+    caster_level = min(12, full_caster_level + half_caster_level + third_caster_level)
+    standard_slot_counts = MULTICLASS_SPELL_SLOTS.get(caster_level, [0] * 6)
+    spell_slot_inventory = [
+        slot_level for slot_level, slot_count in enumerate(standard_slot_counts, 1)
+        for _ in range(slot_count)
+    ]
+    warlock_level = counts.get("Warlock", 0)
+    if warlock_level:
+        warlock_row = CLASS_PROGRESSIONS["Warlock"][warlock_level - 1]
+        for slot_level in range(1, 6):
+            spell_slot_inventory.extend([slot_level] * numeric_progression_value(warlock_row, f"spell_slots_{slot_level}"))
+    spell_slot_inventory.sort(reverse=True)
+
     actions = 1
     bonus_actions = 2 if "Fast Hands" in features else 1
     if limited and "Action Surge" in features:
@@ -3505,6 +3525,12 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     for name, row, slot, offhand_present in main_weapons:
         if row and row["category"] in {"melee", "ranged"}:
             per_hit, expression, ability, flat = weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_level, active_features, counts.get("Barbarian", 0))
+            improved_divine_smite = counts.get("Paladin", 0) >= 11 and row["category"] == "melee"
+            if improved_divine_smite:
+                per_hit = add_damage_stats(per_hit, damage_expression_stats("1d8"))
+            aura_of_hate = counts.get("Paladin", 0) >= 7 and ("Paladin", "Oathbreaker") in selected_subclasses and row["category"] == "melee"
+            if aura_of_hate:
+                per_hit = tuple(value + modifiers["Charisma"] for value in per_hit)
             cleaver_active = "Elemental Cleaver" in active_features and "Rage" in active_features and elemental_cleaver_type
             if cleaver_active:
                 cleaver_stats = damage_expression_stats("1d6")
@@ -3531,6 +3557,10 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
                 active_notes.append(f"Hexblade's Curse +{4 if level >= 9 else 3 if level >= 5 else 2} per hit")
             if cleaver_active:
                 active_notes.append(f"Elemental Cleaver +1d6 {elemental_cleaver_type}" + (" (doubled by Wet)" if "Wet" in (target_conditions or []) and elemental_cleaver_type in {"Cold", "Lightning"} else ""))
+            if improved_divine_smite:
+                active_notes.append("Improved Divine Smite +1d8 Radiant")
+            if aura_of_hate:
+                active_notes.append(f"Aura of Hate {modifiers['Charisma']:+d} weapon damage")
             note = f" Includes {', '.join(active_notes)}." if active_notes else ""
             hit_detail = f" {expression}{flat:+d} using {ability}. Damage type: {', '.join(weapon_types) or row.get('damage_type', 'Weapon')}.{note}"
             components = [{"name": f"{name}: {row['item']}", "stats": per_hit, "detail": hit_detail} for _ in range(attacks_per_action)]
@@ -3542,6 +3572,34 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
                 ranged_attack = attack_data
             else:
                 melee_attack = attack_data
+
+    # Divine Smite is a per-hit rider, so Extra Attack can spend a separate
+    # spell slot on each successful melee strike in the same Attack action.
+    if limited and counts.get("Paladin", 0) >= 2 and melee_attack and spell_slot_inventory:
+        smite_slots = spell_slot_inventory[:attacks_per_action]
+        components, divine_total = [], (0.0, 0.0, 0.0)
+        base_components = melee_attack["candidate"].get("components", [])
+        for attack_index in range(attacks_per_action):
+            base_component = dict(base_components[attack_index])
+            if attack_index < len(smite_slots):
+                slot_level = smite_slots[attack_index]
+                dice_count = min(5, slot_level + 1)
+                smite_expression = f"{dice_count}d8"
+                if "Fiend or Undead" in (target_conditions or []):
+                    smite_expression += "; 1d8"
+                smite_stats = damage_expression_stats(smite_expression)
+                base_component["stats"] = add_damage_stats(base_component["stats"], smite_stats)
+                base_component["name"] = f"Divine Smite (level {slot_level}): {melee_attack['row']['item']}"
+                base_component["detail"] += f" Divine Smite adds {smite_expression} Radiant and consumes one level {slot_level} spell slot on hit."
+            components.append(base_component)
+            divine_total = add_damage_stats(divine_total, base_component["stats"])
+        action_candidates.append({
+            "name": f"Divine Smite ×{len(smite_slots)}: {melee_attack['row']['item']}",
+            "stats": divine_total,
+            "detail": f"Applies Divine Smite separately to {len(smite_slots)} melee hit{'s' if len(smite_slots) != 1 else ''} and uses {len(smite_slots)} spell slot{'s' if len(smite_slots) != 1 else ''}.",
+            "components": components,
+            "max_per_turn": 1,
+        })
 
     # Throwing is its own weapon attack mode. It uses Strength unless the
     # thrown weapon is Finesse (or a Monk weapon), and receives modifiers that
@@ -3671,6 +3729,10 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     for name, row, slot in [("Off-Hand Melee", melee_off, "melee off"), ("Off-Hand Ranged", ranged_off, "ranged off")]:
         if row and row["category"] in {"melee", "ranged"}:
             stats, expression, ability, flat = weapon_damage_stats(row, modifiers, styles, slot, True, monk_level, active_features, counts.get("Barbarian", 0))
+            if counts.get("Paladin", 0) >= 11 and row["category"] == "melee":
+                stats = add_damage_stats(stats, damage_expression_stats("1d8"))
+            if counts.get("Paladin", 0) >= 7 and ("Paladin", "Oathbreaker") in selected_subclasses and row["category"] == "melee":
+                stats = tuple(value + modifiers["Charisma"] for value in stats)
             if "Elemental Cleaver" in active_features and "Rage" in active_features and elemental_cleaver_type:
                 cleaver_stats = damage_expression_stats("1d6")
                 if "Wet" in (target_conditions or []) and elemental_cleaver_type in {"Cold", "Lightning"}:
@@ -3785,8 +3847,11 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             continue
 
         if "normal weapon damage" in row["damage_effect"].lower():
-            if spell_name in {"Searing Smite", "Thunderous Smite", "Wrathful Smite", "Branding Smite", "Blinding Smite"}:
+            if spell_name in {"Searing Smite", "Thunderous Smite", "Wrathful Smite", "Blinding Smite"}:
                 attack = melee_attack
+            elif spell_name == "Branding Smite":
+                available = [item for item in (melee_attack, ranged_attack) if item]
+                attack = max(available, key=lambda item: item["per_hit"][2]) if available else None
             elif spell_name == "Hail of Thorns":
                 attack = ranged_attack
             else:
@@ -3794,19 +3859,64 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
                 attack = max(available, key=lambda item: item["per_hit"][2]) if available else None
             if not attack:
                 continue
+            smite_spells = {"Searing Smite", "Thunderous Smite", "Wrathful Smite", "Branding Smite", "Blinding Smite"}
+            required_slot = max(1, formula_base(row["level"]))
+            usable_slots = [slot for slot in spell_slot_inventory if slot >= required_slot]
+            if spell_name in smite_spells and not usable_slots and not is_equipment_spell:
+                continue
+            cast_slot = required_slot if is_equipment_spell else usable_slots[0] if usable_slots else required_slot
             immediate_dice = {
-                "Ensnaring Strike": "", "Hail of Thorns": "1d10", "Searing Smite": "1d6",
-                "Thunderous Smite": "2d6", "Wrathful Smite": "1d6", "Branding Smite": "2d6",
-                "Blinding Smite": "3d8", "Conjure Barrage": "2d8",
+                "Ensnaring Strike": "", "Hail of Thorns": "1d10",
+                "Searing Smite": f"{cast_slot}d6",
+                "Thunderous Smite": "2d6", "Wrathful Smite": "1d6",
+                "Branding Smite": f"{cast_slot}d6",
+                "Blinding Smite": f"{cast_slot}d8", "Conjure Barrage": "2d8",
             }.get(spell_name, "")
             bonus_stats = damage_expression_stats(immediate_dice)
-            stats = add_damage_stats(attack["per_hit"], bonus_stats)
+            stats = add_damage_stats(attack["candidate"]["stats"], bonus_stats) if spell_name in smite_spells else add_damage_stats(attack["per_hit"], bonus_stats)
             types = list(dict.fromkeys(damage_types_in(attack["row"].get("damage_type", "")) + damage_types))
+            components = None
+            if spell_name in smite_spells:
+                components = [dict(component) for component in attack["candidate"].get("components", [])]
+                if components:
+                    components[0]["stats"] = add_damage_stats(components[0]["stats"], bonus_stats)
+                    components[0]["name"] = f"{spell_name}: {attack['row']['item']}"
+                    smite_resource = "the granting item's use" if is_equipment_spell else f"one level {cast_slot} spell slot"
+                    components[0]["detail"] += f" {spell_name} adds {immediate_dice} and consumes {smite_resource} plus one Bonus Action on hit. {row.get('description', '')}"
+
+                    # A Paladin can also trigger Divine Smite on the same hit as
+                    # a smite spell and again on the Extra Attack hit. Allocate
+                    # the named spell's slot first, then use the best remaining
+                    # slots for those independent on-hit reactions.
+                    remaining_slots = list(spell_slot_inventory)
+                    if not is_equipment_spell and cast_slot in remaining_slots:
+                        remaining_slots.remove(cast_slot)
+                    if limited and counts.get("Paladin", 0) >= 2 and attack is melee_attack:
+                        for component_index, divine_slot in enumerate(remaining_slots[:len(components)]):
+                            divine_dice = min(5, divine_slot + 1)
+                            divine_expression = f"{divine_dice}d8"
+                            if "Fiend or Undead" in (target_conditions or []):
+                                divine_expression += "; 1d8"
+                            divine_stats = damage_expression_stats(divine_expression)
+                            components[component_index]["stats"] = add_damage_stats(components[component_index]["stats"], divine_stats)
+                            components[component_index]["name"] = f"{components[component_index]['name']} + Divine Smite (level {divine_slot})"
+                            components[component_index]["detail"] += f" Divine Smite adds {divine_expression} Radiant and consumes one level {divine_slot} spell slot on hit."
+                        stats = (0.0, 0.0, 0.0)
+                        for component in components:
+                            stats = add_damage_stats(stats, component["stats"])
             candidate = {
                 "name": f"{spell_name}: {attack['row']['item']}", "stats": stats,
-                "detail": f" {attack['row']['damage']} weapon damage" + (f" plus {immediate_dice}." if immediate_dice else ". Ongoing conditional damage is not counted.") + f" Damage types: {', '.join(types) or 'Weapon'}. {spell_resource_text}",
+                "detail": f" {attack['row']['damage']} weapon damage" + (f" plus {immediate_dice}." if immediate_dice else ". Ongoing conditional damage is not counted.") + f" Damage types: {', '.join(types) or 'Weapon'}. {row.get('description', '')} {spell_resource_text}",
             }
-            add_spell_candidate(candidate, row, is_cantrip, twin_eligible=False)
+            if components:
+                candidate.update({"components": components, "uses_bonus_action": True, "max_per_turn": 1})
+            if spell_name in smite_spells:
+                # Smite spells make a weapon attack as the character's Action
+                # and also consume a Bonus Action. They are not standalone
+                # bonus-action damage and cannot be Quickened or Twinned.
+                action_candidates.append(candidate)
+            else:
+                add_spell_candidate(candidate, row, is_cantrip, twin_eligible=False)
             continue
 
         stats = damage_expression_stats(row["damage_effect"], cantrip_scale if is_cantrip else 1)
@@ -3935,12 +4045,15 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     best_bonus = max(bonus_candidates, key=lambda item: item["stats"][2]) if bonus_candidates else None
     sequence, total = [], (0.0, 0.0, 0.0)
     action_uses = Counter()
+    spent_bonus_actions = 0
     for index in range(actions):
         eligible = [item for item in action_candidates if action_uses[item["name"]] < item.get("max_per_turn", actions)]
         if not eligible:
             break
         best_action = max(eligible, key=lambda item: item["stats"][2])
         action_uses[best_action["name"]] += 1
+        if best_action.get("uses_bonus_action"):
+            spent_bonus_actions += 1
         components = best_action.get("components") or [{"name": best_action["name"], "stats": best_action["stats"], "detail": best_action["detail"]}]
         for component_index, component in enumerate(components):
             suffix = chr(ord("a") + component_index) if len(components) > 1 else ""
@@ -3951,7 +4064,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         alternatives = [item for item in bonus_candidates if "Booming Blade" not in item["name"]]
         best_bonus = max(alternatives, key=lambda item: item["stats"][2]) if alternatives else None
     if best_bonus:
-        for index in range(bonus_actions):
+        for index in range(max(0, bonus_actions - spent_bonus_actions)):
             sequence.append({"name": f"Bonus Action {index + 1}: {best_bonus['name']}", "min": best_bonus["stats"][0], "max": best_bonus["stats"][1], "mean": best_bonus["stats"][2], "detail": best_bonus["detail"]})
             total = add_damage_stats(total, best_bonus["stats"])
 
@@ -3968,16 +4081,19 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
 
     crit_sequence = []
     crit_action_uses = Counter()
+    crit_spent_bonus_actions = 0
     for index in range(actions):
         eligible = [item for item in action_candidates if crit_action_uses[item["name"]] < item.get("max_per_turn", actions)]
         if not eligible:
             break
         best = max(eligible, key=lambda item: (sum(optimizer_attack_count(c.get("name", item["name"]), c.get("detail", item.get("detail", "")), cantrip_scale) for c in (item.get("components") or [item])), item["stats"][2]))
         crit_action_uses[best["name"]] += 1
+        if best.get("uses_bonus_action"):
+            crit_spent_bonus_actions += 1
         crit_sequence.extend(candidate_steps(best, f"Action {index + 1}"))
     if bonus_candidates:
         best_crit_bonus = max(bonus_candidates, key=lambda item: (optimizer_attack_count(item["name"], item.get("detail", ""), cantrip_scale), item["stats"][2]))
-        for index in range(bonus_actions):
+        for index in range(max(0, bonus_actions - crit_spent_bonus_actions)):
             crit_sequence.extend(candidate_steps(best_crit_bonus, f"Bonus Action {index + 1}"))
 
     crit_sources, crit_riders = [], []
@@ -4039,9 +4155,9 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     limitations = [
         "The base damage plan assumes every attack hits; critical-hit odds are reported separately.",
         "Enemy Armour Class, saving-throw success rates, resistances, immunities, and vulnerability are not yet included.",
-        "Spell upcasting, damage-over-time, areas hitting multiple targets, and concentration value are not yet optimized.",
+        "Named smite spells are upcast for immediate damage; other spell upcasting, damage-over-time, areas hitting multiple targets, and concentration value are not yet optimized.",
         "Conditional equipment riders and most once-per-turn damage riders are not yet included.",
-        "Limited-resource mode recognizes eligibility but does not yet decrement spell slots or class charges across the proposed sequence.",
+        "Smite spell slots are allocated within each Attack action, but limited resources are not yet decremented globally across Action Surge or repeated setup sequences.",
         "Arcane Shot delayed and area damage is excluded; only the selected target's immediate damage is counted.",
         "The current search repeats the highest-mean Action and Bonus Action; mutually exclusive setup sequences are not yet simulated.",
     ]
