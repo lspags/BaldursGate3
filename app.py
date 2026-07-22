@@ -453,7 +453,7 @@ def class_options() -> list[dict[str, Any]]:
 def feat_options() -> list[dict[str, Any]]:
     return [
         {
-            "label": option_label(row["feat"], [row["description"]]),
+            "label": option_label(row["feat"], [row["description"]], tooltip=f"{row['feat']} | {row['description']}"),
             "value": row["feat"],
             "search": f"{row['feat']} {row['description']}",
         }
@@ -2268,15 +2268,16 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         for value in values:
             style = next((row for row in FIGHTING_STYLES if row["fighting_style"] == value), None)
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == value.lower()), None)
-            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "")
-            option_rows.append({"label": option_label(value, [description]), "value": value, "search": f"{value} {description}"})
+            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "")
+            tooltip = f"{value} | {description}" if description else value
+            option_rows.append({"label": option_label(value, [description], tooltip=tooltip), "value": value, "search": f"{value} {description}"})
         if unique:
             used_unique[feature].update(current_items)
         return html.Div([
             html.Label(label),
             dcc.Dropdown(
                 id={"type": "class-feature-choice", "level": level, "feature": feature}, options=option_rows,
-                value=current, placeholder=f"Choose {label.lower()}", multi=multi, className="rich-dropdown",
+                value=current, placeholder=f"Choose {label.lower()}", multi=multi, className="rich-dropdown class-choice-dropdown",
                 optionHeight=105, maxHeight=390, persistence=True, persistence_type="session",
             ),
             html.P(f"Choose up to {limit}." if multi and limit else "", className="spell-card-note"),

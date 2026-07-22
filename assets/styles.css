@@ -288,6 +288,7 @@ body {
 .spell-choice-status--over { color: #ff8b81; font-weight: 800; }
 .spell-dropdown .VirtualizedSelectOption { padding: 7px 10px; }
 .spell-dropdown .dropdown-option { gap: 3px; line-height: 1.15; cursor: help; }
+.class-choice-dropdown .dropdown-option { cursor: help; }
 .spell-dropdown .option-title { font-size: 0.78rem; }
 .spell-dropdown .option-detail { font-size: 0.65rem; line-height: 1.2; -webkit-line-clamp: 2; }
 .spell-dropdown .Select--multi .Select-value { margin-top: 4px; margin-bottom: 2px; }
