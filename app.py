@@ -5337,7 +5337,16 @@ def manage_act_loadouts(selected_act, *args):
     if ctx.triggered_id == "equipment-act-tab":
         save_and_inherit(previous_act, values)
         target = loadouts.get(str(int(selected_act)), {})
-        stored.update({"active_act": int(selected_act), "loadouts": loadouts})
+        restoring_slots = [
+            slot for slot, old_value in zip(EQUIPMENT_SLOT_IDS, values)
+            if target.get(slot) != old_value
+        ]
+        stored.update({
+            "active_act": int(selected_act),
+            "loadouts": loadouts,
+            "restoring_slots": restoring_slots,
+            "restore_values": {slot: target.get(slot) for slot in restoring_slots},
+        })
         return *[target.get(slot) for slot in EQUIPMENT_SLOT_IDS], stored
 
     # Restoring a loadout changes several dropdowns at once, and dependent weapon
@@ -5349,8 +5358,17 @@ def manage_act_loadouts(selected_act, *args):
     triggered_ids = set(ctx.triggered_prop_ids.values())
     changed_slots = [slot for slot in EQUIPMENT_SLOT_IDS if f"equipment-{slot}" in triggered_ids]
     current_loadout = dict(loadouts.get(str(active_act)) or {})
+    restoring_slots = set(stored.get("restoring_slots") or [])
+    restore_values = dict(stored.get("restore_values") or {})
     for slot in changed_slots:
         slot_value = values[EQUIPMENT_SLOT_IDS.index(slot)]
+        if slot in restoring_slots:
+            # Ignore an old-act value emitted while Dash is applying the new
+            # options/value pair.  The matching destination value completes the
+            # restore without rewriting the saved loadout.
+            if slot_value == restore_values.get(slot):
+                restoring_slots.discard(slot)
+            continue
         current_loadout[slot] = slot_value
         inherited_value = slot_value
         for later_act in range(active_act + 1, 4):
@@ -5362,6 +5380,11 @@ def manage_act_loadouts(selected_act, *args):
                 inherited_value = later_loadout.get(slot)
     loadouts[str(active_act)] = current_loadout
     stored.update({"active_act": active_act, "loadouts": loadouts})
+    if restoring_slots:
+        stored.update({"restoring_slots": list(restoring_slots), "restore_values": restore_values})
+    else:
+        stored.pop("restoring_slots", None)
+        stored.pop("restore_values", None)
     return *([no_update] * len(EQUIPMENT_SLOT_IDS)), stored
 
 
