@@ -141,6 +141,21 @@ WARLOCK_LEVEL_2_INVOCATIONS = [
     "Agonising Blast", "Armour of Shadows", "Beast Speech", "Beguiling Influence", "Devil's Sight",
     "Fiendish Vigour", "Mask of Many Faces", "One with Shadows", "Repelling Blast", "Thief of Five Fates",
 ]
+MONK_ELEMENTAL_DISCIPLINES = [
+    "Blade of Rime", "Chill of the Mountain", "Fangs of the Fire Snake", "Fist of Four Thunders",
+    "Fist of Unbroken Air", "Rush of the Gale Spirits", "Shaping of the Ice", "Sphere of Elemental Balance",
+    "Sweeping Cinder Strike", "Touch of the Storm", "Water Whip", "Clench of the North Wind",
+    "Embrace of the Inferno", "Gong of the Summit", "Flames of the Phoenix", "Mist Stance", "Ride the Wind",
+]
+MONK_DISCIPLINE_DAMAGE = {
+    "Blade of Rime": ("1d10; 2d6", "Piercing + Cold", 2), "Chill of the Mountain": ("1d10", "Cold", 1),
+    "Fangs of the Fire Snake": ("1d10", "Fire", 1),
+    "Fist of Four Thunders": ("2d8", "Thunder", 2), "Fist of Unbroken Air": ("3d10", "Bludgeoning", 2),
+    "Sphere of Elemental Balance": ("3d8", "chosen elemental", 2), "Sweeping Cinder Strike": ("3d6", "Fire", 2),
+    "Touch of the Storm": ("1d10", "Lightning", 1), "Water Whip": ("3d10", "Bludgeoning", 2),
+    "Embrace of the Inferno": ("6d6", "Fire", 3), "Gong of the Summit": ("3d8", "Thunder", 3),
+    "Flames of the Phoenix": ("8d6", "Fire", 4),
+}
 SPELL_SNIPER_CANTRIPS = ["Bone Chill", "Eldritch Blast", "Fire Bolt", "Ray of Frost", "Shocking Grasp", "Thorn Whip"]
 MANOEUVRES = ["Commander's Strike", "Disarming Attack", "Distracting Strike", "Evasive Footwork", "Feinting Attack", "Goading Attack", "Manoeuvring Attack", "Menacing Attack", "Precision Attack", "Pushing Attack", "Rally", "Riposte", "Sweeping Attack", "Trip Attack"]
 ARCANE_SHOTS = ["Arcane Shot: Banishing Arrow", "Arcane Shot: Beguiling Arrow", "Arcane Shot: Bursting Arrow", "Arcane Shot: Enfeebling Arrow", "Arcane Shot: Grasping Arrow", "Arcane Shot: Piercing Arrow", "Arcane Shot: Seeking Arrow", "Arcane Shot: Shadow Arrow"]
@@ -200,6 +215,13 @@ COMBAT_ACTION_DESCRIPTIONS = {
     "Flurry of Blows": "Spend a Ki Point and a Bonus Action to punch twice in quick succession.",
     "Stunning Strike (Melee)": "Spend a Ki Point after a melee weapon hit to deal weapon damage and potentially Stun the target.",
     "Stunning Strike (Unarmed)": "Spend a Ki Point to make an unarmed attack that can Stun the target.",
+    "Flurry of Blows: Topple": "Spend 1 Ki Point and a Bonus Action to make two unarmed strikes and potentially knock the target Prone.",
+    "Flurry of Blows: Stagger": "Spend 1 Ki Point and a Bonus Action to make two unarmed strikes and remove the target's Reactions.",
+    "Flurry of Blows: Push": "Spend 1 Ki Point and a Bonus Action to make two unarmed strikes and potentially push the target 5 m.",
+    "Drunken Technique": "Spend 1 Ki Point and a Bonus Action to make two unarmed strikes, gain 3 m movement, and Disengage.",
+    "Ki Resonation: Blast": "Spend 1 Ki Point to detonate a resonating creature for 3d6 Force damage in a 5 m radius.",
+    "Shadow Strike": "From hiding, teleport to the target and deal weapon damage plus 3d8 Psychic damage for 3 Ki Points.",
+    "Shadow Strike: Unarmed": "From hiding, teleport to the target and deal unarmed damage plus 3d8 Psychic damage for 3 Ki Points.",
     "Divine Smite": "After a melee weapon hit, expend a spell slot to deal additional Radiant damage.",
     "Turn Undead": "Spend Channel Divinity to Turn nearby undead; affected creatures flee and cannot take actions or reactions.",
     "Starry Form: Archer": "Spend a Wild Shape Charge to enter Archer form. Luminous Arrow then deals 1d8 + Wisdom modifier Radiant damage as a Bonus Action, increasing to 2d8 at Druid level 10.",
@@ -681,6 +703,55 @@ CLASS_FEATURE_OVERRIDES = {
     "Sneak Attack (Ranged)": "Deal additional weapon damage with a ranged weapon when you have Advantage or an adjacent ally enables Sneak Attack.",
 }
 
+CLASS_FEATURE_OVERRIDES.update({
+    "Unarmoured Defence": "While not wearing armour or using a shield, Armour Class equals 10 + Dexterity modifier + Wisdom modifier.",
+    "Martial Arts: Dextrous Attacks": "Unarmed attacks and proficient weapons without Heavy or Two-Handed use Dexterity instead of Strength when Dexterity is higher.",
+    "Martial Arts: Deft Strikes": "Unarmed attacks and Monk weapons use the Martial Arts die when it is higher than their normal damage: 1d4 at level 1, 1d6 at level 3, and 1d8 at level 9.",
+    "Martial Arts: Bonus Unarmed Strike": "After attacking unarmed or with a melee Monk weapon, make one unarmed strike as a Bonus Action.",
+    "Flurry of Blows": "Spend 1 Ki Point and a Bonus Action to make two unarmed strikes.",
+    "Unarmoured Movement": "While not wearing armour or using a shield, movement increases by 3 m; this becomes 4.5 m at Monk level 6 and 6 m at level 10.",
+    "Patient Defence": "Spend 1 Ki Point and a Bonus Action: attacks against you have Disadvantage and you gain Advantage on Dexterity saving throws for one turn.",
+    "Step of the Wind: Dash": "Spend 1 Ki Point and a Bonus Action to Dash; jumping no longer costs a Bonus Action this turn.",
+    "Step of the Wind: Disengage": "Spend 1 Ki Point and a Bonus Action to Disengage; jumping no longer costs a Bonus Action this turn.",
+    "Deflect Missiles": "Use a Reaction to reduce ranged weapon damage by 1d10 + Dexterity modifier + Monk level; if reduced to 0, spend 1 Ki to return the missile.",
+    "Slow Fall": "Use a Reaction to gain Resistance to Falling damage.",
+    "Stunning Strike (Melee)": "Spend 1 Ki Point to deal normal Monk-weapon damage and force a Constitution save or Stun the target for one turn.",
+    "Stunning Strike (Unarmed)": "Spend 1 Ki Point to deal normal unarmed damage and force a Constitution save or Stun the target for one turn.",
+    "Ki-Empowered Strikes": "Unarmed attacks count as magical for overcoming resistance and immunity to non-magical damage.",
+    "Evasion": "Dexterity-save effects deal no damage on a success and half damage on a failure.",
+    "Stillness of Mind": "Automatically remove Charmed or Frightened at the start of your turn.",
+    "Advanced Unarmoured Movement": "While unarmoured and without a shield, Difficult Terrain does not slow you and jump distance increases by 6 m.",
+    "Improved Unarmoured Movement": "While not wearing armour or using a shield, movement increases by 4.5 m at Monk level 6 and by 6 m at level 10.",
+    "Purity of Body": "Gain immunity to Poison damage, the Poisoned condition, and disease.",
+    "Flurry of Blows: Topple": "Spend 1 Ki and a Bonus Action for two unarmed strikes that may knock the target Prone.",
+    "Flurry of Blows: Stagger": "Spend 1 Ki and a Bonus Action for two unarmed strikes that remove the target's Reactions.",
+    "Flurry of Blows: Push": "Spend 1 Ki and a Bonus Action for two unarmed strikes that may push the target 5 m.",
+    "Manifestation of Body": "Toggle: unarmed attacks deal an additional 1d4 + Wisdom modifier Necrotic damage. Mutually exclusive with Mind and Soul.",
+    "Manifestation of Mind": "Toggle: unarmed attacks deal an additional 1d4 + Wisdom modifier Psychic damage. Mutually exclusive with Body and Soul.",
+    "Manifestation of Soul": "Toggle: unarmed attacks deal an additional 1d4 + Wisdom modifier Radiant damage. Mutually exclusive with Body and Mind.",
+    "Wholeness of Body": "Once per Long Rest, regain half your Ki, heal for three times Monk level, and gain one extra Bonus Action per turn for 3 turns.",
+    "Ki Resonation: Punch": "Make an unarmed strike and infuse the target with resonating Ki without spending Ki.",
+    "Ki Resonation: Punch (bonus action)": "Make an unarmed strike as a Bonus Action and infuse the target with resonating Ki without spending Ki.",
+    "Ki Resonation: Blast": "Spend 1 Ki to detonate a resonating creature for 3d6 Force damage in a 5 m radius.",
+    "Shadow Strike": "From hiding, teleport to a target and deal weapon damage plus 3d8 Psychic damage for 3 Ki Points.",
+    "Shadow Strike: Unarmed": "From hiding, teleport to a target and deal unarmed damage plus 3d8 Psychic damage for 3 Ki Points.",
+    "Drunken Technique": "Spend 1 Ki and a Bonus Action for two unarmed strikes, then gain 3 m movement and Disengage for the turn.",
+    "Drunken Performance": "Gain proficiency in Performance.",
+    "Cheeky Tipple": "Become immune to the negative effects of being Drunk; once per Long Rest, drinking alcohol restores half your maximum Ki.",
+    "Intoxicating Strike": "Spend 1 Ki to make an unarmed strike that can make the target Drunk.",
+    "Life of the Party": "Hitting with Intoxicating Strike grants stacking Armour Class and attack-roll bonuses against Drunk targets.",
+    "Leap to Your Feet": "Standing from Prone costs only 1.5 m of movement.",
+    "Redirect Attack": "When a nearby creature misses you with a melee attack, spend 1 Ki and a Reaction to make an unarmed strike against it.",
+    "Sobering Realisation": "Spend 1 Ki to strike a Drunk target, remove Drunk, and deal additional Psychic damage.",
+    "Drunkard's Luck": "Spend 2 Ki to cancel Disadvantage on an Ability Check, Attack Roll, or Saving Throw.",
+    "Shadow Step": "While obscured, teleport between shadows as a Bonus Action and gain Advantage on your next melee attack.",
+    "Cloak of Shadows": "While obscured, use an Action to become Invisible until you attack, cast, take an action, or enter bright light.",
+    "Tranquillity": "After a Long Rest, gain Sanctuary until you attack or harm another creature.",
+    "Fangs of the Fire Snake": "Spend 1 Ki to make a ranged unarmed attack for Fire damage; subsequent melee attacks this turn gain additional Fire damage.",
+    "Water Whip": "Spend 2 Ki to deal 3d10 Bludgeoning damage and pull the target or knock it Prone; damage becomes 4d10 at level 9.",
+    "Harmony of Fire and Water": "Once per Long Rest outside combat, regain half your maximum Ki Points, rounded down.",
+})
+
 
 def class_feature_tooltips(features, inline_descriptions=None):
     inline_descriptions = inline_descriptions or {}
@@ -704,7 +775,11 @@ def class_feature_tooltips(features, inline_descriptions=None):
         if feature.startswith(("Knowledge of the Ages: ", "Astral Knowledge: ")):
             knowledge_ability = feature.split(":", 1)[1].strip()
             knowledge_description = f"Gain proficiency in every skill governed by {knowledge_ability}."
-        description = expertise_description or proficiency_description or knowledge_description or CLASS_FEATURE_OVERRIDES.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
+        monk_discipline_description = ""
+        if feature in MONK_DISCIPLINE_DAMAGE:
+            expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[feature]
+            monk_discipline_description = f"Damage: {expression} {damage_type}; costs {ki_cost} Ki. Uses Wisdom for its attack roll or save DC unless its feature states otherwise."
+        description = expertise_description or proficiency_description or knowledge_description or CLASS_FEATURE_OVERRIDES.get(feature) or monk_discipline_description or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
         if rendered:
             rendered.append(", ")
         rendered.append(html.Span(feature, className="sheet-tooltip-term", tabIndex=0, **{"data-tooltip": description[:900]}))
@@ -2273,7 +2348,7 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
     choices = []
     chosen_subclasses = {}
     existing = {(item_id["level"], item_id["feature"]): value for value, item_id in zip(current_values or [], current_ids or [])}
-    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(), "Expertise": set(), "Skill Proficiencies": set()}
+    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(), "Expertise": set(), "Skill Proficiencies": set(), "Elemental Disciplines": set()}
 
     background_row = next((row for row in BACKGROUNDS if row["background"] == background), None)
     race_row = next((row for row in RACES if row["race"] == race), None)
@@ -2337,6 +2412,9 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == value.lower()), None)
             invocation_description = "Gain proficiency in Deception and Persuasion." if value == "Beguiling Influence" else "Eldritch Invocation selected as a Warlock class feature." if value in WARLOCK_LEVEL_2_INVOCATIONS else ""
             description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or invocation_description or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
+            if value in MONK_DISCIPLINE_DAMAGE:
+                expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[value]
+                description += f" Damage: {expression} {damage_type}. Cost: {ki_cost} Ki Point{'s' if ki_cost != 1 else ''}."
             tooltip = f"{value} | {description}" if description else value
             option_rows.append({"label": option_label(value, [description], tooltip=tooltip), "value": value, "search": f"{value} {description}"})
         if unique:
@@ -2382,6 +2460,17 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             controls.append(choice_control(
                 level, "Eldritch Invocations", "Eldritch Invocations (2)", WARLOCK_LEVEL_2_INVOCATIONS,
                 multi=True, limit=2, valid_only=True,
+            ))
+        if class_name == "Monk" and subclass == "Way of the Four Elements" and class_level in {3, 6, 9, 11}:
+            unlocked = MONK_ELEMENTAL_DISCIPLINES[:11]
+            if class_level >= 6:
+                unlocked += MONK_ELEMENTAL_DISCIPLINES[11:14]
+            if class_level >= 11:
+                unlocked += MONK_ELEMENTAL_DISCIPLINES[14:]
+            limit = 3 if class_level == 3 else 1
+            controls.append(choice_control(
+                level, "Elemental Disciplines", f"Elemental Discipline ({limit})", unlocked,
+                multi=True, limit=limit, unique=True, valid_only=True,
             ))
 
         if counts[class_name] == 1:
@@ -2599,6 +2688,9 @@ def render_sheet_leveling(class_values, subclass_values, feat_values, ability_da
         values = [feature for feature in class_features if feature.lower() not in spell_names and feature not in combat_actions]
         selected_values = selected_by_class.get(class_name, [])
         category_choices = selected_categories_by_class.get(class_name, {})
+        if class_name == "Monk" and "Elemental Disciplines" in category_choices:
+            selected_disciplines = set(category_choices["Elemental Disciplines"])
+            values = [feature for feature in values if feature not in MONK_ELEMENTAL_DISCIPLINES or feature in selected_disciplines]
 
         def normalized_choice_label(text):
             text = text.replace("’", "'").lower()
@@ -2870,6 +2962,13 @@ def render_saving_throws(ability_data, feat_effects, equipment_effects, race, su
                 notes[ability].append(f"{feat}: {description}")
     if "Danger Sense" in features:
         notes["Dexterity"].append("Danger Sense: Advantage against traps, spells, and surfaces while able to react")
+    if "Patient Defence" in features:
+        notes["Dexterity"].append("Patient Defence: Advantage while active (costs 1 Ki and a Bonus Action)")
+    if "Evasion" in features:
+        notes["Dexterity"].append("Evasion: successful Dexterity saves take no damage; failed saves take half damage")
+    if "Stillness of Mind" in features:
+        for ability in ABILITIES:
+            notes[ability].append("Stillness of Mind: automatically removes Charmed or Frightened at the start of the turn")
     if "Rage" in features:
         notes["Strength"].append("Rage: Advantage while raging")
     if "Indomitable" in features:
@@ -3473,6 +3572,12 @@ def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_leve
     if "Duelling" in styles and row["category"] == "melee" and "main" in slot and not offhand_present and "two-handed" not in properties:
         flat += 2
     expression = row.get("damage", "1")
+    if monk_weapon and monk_level:
+        martial_die = CLASS_PROGRESSIONS["Monk"][monk_level - 1].get("martial_arts", "1")
+        weapon_die = re.search(r"(\d+)d(\d+)", expression)
+        martial_match = re.match(r"(\d+)d(\d+)", martial_die)
+        if weapon_die and martial_match and int(martial_match.group(2)) > int(weapon_die.group(2)):
+            expression = expression[:weapon_die.start()] + martial_die + expression[weapon_die.end():]
     if charge_bound:
         expression += "; 1d6"
     if not thrown and row["category"] == "melee" and "versatile" in properties and not offhand_present and "main" in slot:
@@ -3676,6 +3781,8 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
     active_features = set(active_features or [])
     if ("Warlock", "The Hexblade") not in subclasses:
         active_features -= {"Hexed Weapon", "Hexblade's Curse"}
+    if counts.get("Monk", 0) < 6 or ("Monk", "Way of the Open Hand") not in subclasses:
+        active_features -= {"Manifestation of Body", "Manifestation of Mind", "Manifestation of Soul", "Wholeness of Body"}
     selected = {}
     for value, item_id in zip(choice_values or [], choice_ids or []):
         if not value:
@@ -3695,7 +3802,15 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
         hexed_weapon = bool(active_features & {"Hexed Weapon", "Pact Weapon"}) and slot == "melee main" and not thrown
         proficient = proficient_with_item(row, profs) or hexed_weapon
         monk_weapon = counts.get("Monk", 0) > 0 and proficient and "heavy" not in properties and "two-handed" not in properties
-        description = weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand_present, thrown, proficient, monk_weapon, elevation, active_features)
+        display_row = row
+        if monk_weapon and not thrown:
+            martial_die = CLASS_PROGRESSIONS["Monk"][counts["Monk"] - 1].get("martial_arts", "1")
+            weapon_die = re.search(r"(\d+)d(\d+)", row.get("damage", ""))
+            martial_match = re.match(r"(\d+)d(\d+)", martial_die)
+            if weapon_die and martial_match and int(martial_match.group(2)) > int(weapon_die.group(2)):
+                upgraded_damage = row["damage"][:weapon_die.start()] + martial_die + row["damage"][weapon_die.end():]
+                display_row = {**row, "damage": upgraded_damage}
+        description = weapon_attack_description(display_row, slot, modifiers, proficiency, styles, offhand_present, thrown, proficient, monk_weapon, elevation, active_features)
         racial_rider = racial_weapon_damage_expression(row, race, subrace, target_conditions, thrown)
         if racial_rider:
             description += f" Race-activated equipment adds {racial_rider}."
@@ -3708,6 +3823,10 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
     automatic_attacks = earned_combat_actions(class_values, subclass_values)
     for values in automatic_attacks.values():
         attacks.extend(values)
+    if ("Monk", "Way of the Four Elements") in subclasses:
+        selected_disciplines = set(selected.get("Elemental Disciplines", []))
+        attacks = [attack for attack in attacks if attack not in MONK_ELEMENTAL_DISCIPLINES or attack in selected_disciplines]
+        attacks.extend(selected_disciplines)
     attacks = list(dict.fromkeys(attacks))
     if attacks:
         superiority_die = "1d10" if counts.get("Fighter", 0) >= 10 and ("Fighter", "Battle Master") in subclasses else "1d8"
@@ -3730,6 +3849,19 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
                 attack_descriptions[attack] = f"{base} {' '.join(formulas)}"
             elif attack in ARCANE_SHOTS and ranged_row:
                 attack_descriptions[attack] = f"{ARCANE_SHOT_DESCRIPTIONS[attack]} Arcane Shot save DC: {arcane_shot_dc}. Base shot: {describe_weapon(ranged_row, 'ranged main', modifiers, proficiency, bool(ranged_off_id))}"
+            elif attack in MONK_ELEMENTAL_DISCIPLINES:
+                feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == attack.lower()), None)
+                description = (feature_row or {}).get("description", f"Elemental Discipline: {attack}.")
+                damage_profile = MONK_DISCIPLINE_DAMAGE.get(attack)
+                monk_dc = 8 + proficiency + modifiers["Wisdom"]
+                if damage_profile:
+                    expression, damage_type, ki_cost = damage_profile
+                    if counts.get("Monk", 0) >= 9:
+                        expression = {"1d10": "2d10", "2d8": "3d8", "3d10": "4d10", "3d6": "4d6", "3d8": "4d8", "6d6": "8d6"}.get(expression, expression)
+                    description += f" Damage: {expression} {damage_type}. Cost: {ki_cost} Ki. Save DC: {monk_dc}."
+                else:
+                    description += f" Cost and effect are shown by the feature; Monk save DC: {monk_dc}."
+                attack_descriptions[attack] = description
             elif "Flourish" in attack:
                 bard_level = counts.get("Bard", 0)
                 inspiration = "1d10" if bard_level >= 10 else "1d8" if bard_level >= 5 else "1d6"
@@ -3770,8 +3902,31 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
     unarmed_die = CLASS_PROGRESSIONS["Monk"][monk_level - 1].get("martial_arts", "1") if monk_level else "1"
     unarmed_ability = "Dexterity" if monk_level and modifiers["Dexterity"] > modifiers["Strength"] else "Strength"
     unarmed_mod = modifiers[unarmed_ability]
+    unarmed_additions = []
+    unarmed_stats = damage_expression_stats(unarmed_die)
+    unarmed_stats = tuple(value + unarmed_mod for value in unarmed_stats)
+    if "Tavern Brawler" in (feat_effects or {}).get("feats", []):
+        unarmed_stats = tuple(value + modifiers["Strength"] for value in unarmed_stats)
+        unarmed_additions.append(f"Tavern Brawler {modifiers['Strength']:+d}")
+    manifestation = next((name for name in ("Manifestation of Body", "Manifestation of Mind", "Manifestation of Soul") if name in active_features), None)
+    if manifestation:
+        damage_type = {"Manifestation of Body": "Necrotic", "Manifestation of Mind": "Psychic", "Manifestation of Soul": "Radiant"}[manifestation]
+        rider = tuple(value + modifiers["Wisdom"] for value in damage_expression_stats("1d4"))
+        unarmed_stats = add_damage_stats(unarmed_stats, rider)
+        unarmed_additions.append(f"{manifestation} 1d4{modifiers['Wisdom']:+d} {damage_type}")
+    for item_name in (equipment_effects or {}).get("equipped_items", []):
+        equipment_row = next((row for row in EQUIPMENT if row["item"] == item_name), None)
+        if not equipment_row:
+            continue
+        rider = re.search(r"unarmed attacks? deal(?:s)? (?:an )?additional\s+(\d+d\d+|\d+)\s+(\w+) damage", equipment_row.get("special", ""), re.IGNORECASE)
+        if rider:
+            unarmed_stats = add_damage_stats(unarmed_stats, damage_expression_stats(rider.group(1)))
+            unarmed_additions.append(f"{item_name} {rider.group(1)} {rider.group(2)}")
+        if item_name == "Boots of Uninhibited Kushigo":
+            unarmed_stats = tuple(value + modifiers["Wisdom"] for value in unarmed_stats)
+            unarmed_additions.append(f"Boots of Uninhibited Kushigo {modifiers['Wisdom']:+d}")
     basic_attacks.append("Unarmed Strike")
-    basic_descriptions["Unarmed Strike"] = f"Melee attack roll +{proficiency + unarmed_mod}. Damage: {unarmed_die}{unarmed_mod:+d} Bludgeoning ({unarmed_ability} {unarmed_mod:+d} plus proficiency +{proficiency} to hit)."
+    basic_descriptions["Unarmed Strike"] = f"Melee attack roll +{proficiency + unarmed_mod}. Damage: {unarmed_stats[0]:g}–{unarmed_stats[1]:g}, mean {unarmed_stats[2]:.1f}, starting from {unarmed_die}{unarmed_mod:+d} Bludgeoning ({unarmed_ability} {unarmed_mod:+d} plus proficiency +{proficiency} to hit)." + (f" Includes {', '.join(unarmed_additions)}." if unarmed_additions else "")
     equipped_weapons = [
         ("Melee Attack", "melee main", EQUIPMENT_BY_ID.get(melee_main_id), bool(melee_off_id)),
         ("Off-Hand Melee Attack", "melee off", EQUIPMENT_BY_ID.get(melee_off_id), True),
@@ -3839,6 +3994,13 @@ def optimizer_active_feature_options(class_values, subclass_values, choice_value
         options.append({"label": " Sneak Attack available", "value": "Sneak Attack"})
     if counts.get("Barbarian"):
         options.append({"label": " Rage active", "value": "Rage"})
+    if counts.get("Monk", 0) >= 6 and ("Monk", "Way of the Open Hand") in subclasses:
+        options.extend([
+            {"label": " Manifestation of Body active", "value": "Manifestation of Body"},
+            {"label": " Manifestation of Mind active", "value": "Manifestation of Mind"},
+            {"label": " Manifestation of Soul active", "value": "Manifestation of Soul"},
+            {"label": " Wholeness of Body active", "value": "Wholeness of Body"},
+        ])
     if counts.get("Barbarian", 0) >= 6 and ("Barbarian", "Giant") in subclasses:
         options.append({"label": " Elemental Cleaver applied", "value": "Elemental Cleaver"})
     if ("Warlock", "The Hexblade") in subclasses:
@@ -3946,6 +4108,8 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         active_features.discard("Elemental Cleaver")
     if ("Warlock", "The Hexblade") not in selected_subclasses:
         active_features -= {"Hexed Weapon", "Hexblade's Curse"}
+    if counts.get("Monk", 0) < 6 or ("Monk", "Way of the Open Hand") not in selected_subclasses:
+        active_features -= {"Manifestation of Body", "Manifestation of Mind", "Manifestation of Soul", "Wholeness of Body"}
     if not counts.get("Rogue"):
         active_features.discard("Sneak Attack")
     level = len(active_classes)
@@ -3985,6 +4149,8 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
 
     actions = 1
     bonus_actions = 2 if "Fast Hands" in features else 1
+    if limited and "Wholeness of Body" in active_features:
+        bonus_actions += 1
     if limited and "Action Surge" in features:
         actions += 1
     attacks_per_action = 3 if counts.get("Fighter", 0) >= 11 else 2 if "Extra Attack" in features or "Improved Extra Attack" in features else 1
@@ -4194,6 +4360,31 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     unarmed_die = CLASS_PROGRESSIONS["Monk"][monk_level - 1].get("martial_arts", "1") if monk_level else "1"
     unarmed_base = damage_expression_stats(unarmed_die)
     unarmed_base = tuple(value + modifiers[unarmed_ability] for value in unarmed_base)
+    unarmed_notes = []
+    if "Tavern Brawler" in (feat_values or []):
+        unarmed_base = tuple(value + modifiers["Strength"] for value in unarmed_base)
+        unarmed_notes.append(f"Tavern Brawler {modifiers['Strength']:+d}")
+    manifestation = next((name for name in ("Manifestation of Body", "Manifestation of Mind", "Manifestation of Soul") if name in active_features), None)
+    if manifestation:
+        damage_type = {"Manifestation of Body": "Necrotic", "Manifestation of Mind": "Psychic", "Manifestation of Soul": "Radiant"}[manifestation]
+        manifestation_stats = damage_expression_stats("1d4")
+        manifestation_stats = tuple(value + modifiers["Wisdom"] for value in manifestation_stats)
+        unarmed_base = add_damage_stats(unarmed_base, manifestation_stats)
+        unarmed_notes.append(f"{manifestation} +1d4{modifiers['Wisdom']:+d} {damage_type}")
+    equipped_rows_for_unarmed = [row for row in (
+        EQUIPMENT_BY_ID.get(headwear_id), EQUIPMENT_BY_ID.get(armour_id), EQUIPMENT_BY_ID.get(handwear_id),
+        EQUIPMENT_BY_ID.get(footwear_id), EQUIPMENT_BY_ID.get(cape_id), EQUIPMENT_BY_ID.get(necklace_id),
+        EQUIPMENT_BY_ID.get(ring_1_id), EQUIPMENT_BY_ID.get(ring_2_id), EQUIPMENT_BY_ID.get(melee_main_id),
+    ) if row]
+    for equipment_row in equipped_rows_for_unarmed:
+        special = equipment_row.get("special", "")
+        rider = re.search(r"unarmed attacks? deal(?:s)? (?:an )?additional\s+(\d+d\d+|\d+)\s+(\w+) damage", special, re.IGNORECASE)
+        if rider:
+            unarmed_base = add_damage_stats(unarmed_base, damage_expression_stats(rider.group(1)))
+            unarmed_notes.append(f"{equipment_row['item']} +{rider.group(1)} {rider.group(2)}")
+        if equipment_row["item"] == "Boots of Uninhibited Kushigo":
+            unarmed_base = tuple(value + modifiers["Wisdom"] for value in unarmed_base)
+            unarmed_notes.append(f"Boots of Uninhibited Kushigo {modifiers['Wisdom']:+d}")
     if "Rage" in active_features:
         rage_bonus = 3 if counts.get("Barbarian", 0) >= 9 else 2
         unarmed_base = tuple(value + rage_bonus for value in unarmed_base)
@@ -4201,8 +4392,28 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         curse_bonus = 4 if level >= 9 else 3 if level >= 5 else 2
         unarmed_base = tuple(value + curse_bonus for value in unarmed_base)
     unarmed_action = tuple(value * attacks_per_action for value in unarmed_base)
-    unarmed_detail = f" {unarmed_die}{modifiers[unarmed_ability]:+d} using {unarmed_ability}. Damage type: Bludgeoning."
-    action_candidates.append({"name": f"Unarmed Attack ×{attacks_per_action}", "stats": unarmed_action, "detail": f" {unarmed_die}{modifiers[unarmed_ability]:+d} per hit using {unarmed_ability}.", "components": [{"name": "Unarmed Attack", "stats": unarmed_base, "detail": unarmed_detail} for _ in range(attacks_per_action)]})
+    unarmed_detail = f" {unarmed_die}{modifiers[unarmed_ability]:+d} using {unarmed_ability}. Damage type: Bludgeoning." + (f" Includes {', '.join(unarmed_notes)}." if unarmed_notes else "")
+    action_candidates.append({"name": f"Unarmed Attack ×{attacks_per_action}", "stats": unarmed_action, "detail": f" {unarmed_die}{modifiers[unarmed_ability]:+d} per hit using {unarmed_ability}." + (f" Includes {', '.join(unarmed_notes)}." if unarmed_notes else ""), "components": [{"name": "Unarmed Attack", "stats": unarmed_base, "detail": unarmed_detail} for _ in range(attacks_per_action)]})
+
+    if limited and monk_level:
+        monk_dc = 8 + proficiency + modifiers["Wisdom"]
+        for discipline in (choice for choice in selected_choices if choice in MONK_DISCIPLINE_DAMAGE):
+            expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[discipline]
+            if monk_level >= 9:
+                expression = {"1d10": "2d10", "2d8": "3d8", "3d10": "4d10", "3d6": "4d6", "3d8": "4d8", "6d6": "8d6"}.get(expression, expression)
+            discipline_stats = damage_expression_stats(expression)
+            action_candidates.append({
+                "name": discipline, "stats": discipline_stats,
+                "detail": f" {expression} {damage_type}; costs {ki_cost} Ki; Monk save DC {monk_dc} where applicable.",
+                "max_per_turn": 1,
+            })
+    if limited and monk_level >= 11 and ("Monk", "Way of Shadow") in selected_subclasses and bool({"Hidden", "Invisible"} & set(attacker_conditions or [])):
+        shadow_stats = add_damage_stats(unarmed_base, damage_expression_stats("3d8"))
+        action_candidates.append({
+            "name": "Shadow Strike: Unarmed", "stats": shadow_stats,
+            "detail": " Unarmed damage +3d8 Psychic; costs 3 Ki and requires Hidden or Invisible.",
+            "max_per_turn": 1,
+        })
 
     for name, row, slot in [("Off-Hand Melee", melee_off, "melee off"), ("Off-Hand Ranged", ranged_off, "ranged off")]:
         if row and row["category"] in {"melee", "ranged"}:
@@ -4225,10 +4436,16 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             weapon_types = damage_types_in(row.get("damage_type", ""))
             bonus_candidates.append({"name": f"{name}: {row['item']}", "stats": stats, "detail": f" {expression}{flat:+d} using {ability}. Damage type: {', '.join(weapon_types) or row.get('damage_type', 'Weapon')}."})
     if monk_level:
-        bonus_candidates.append({"name": "Martial Arts: Bonus Unarmed Strike", "stats": unarmed_base, "detail": f" {unarmed_die}{modifiers[unarmed_ability]:+d}."})
+        bonus_candidates.append({"name": "Martial Arts: Bonus Unarmed Strike", "stats": unarmed_base, "detail": unarmed_detail})
         if limited:
             flurry = tuple(value * 2 for value in unarmed_base)
-            bonus_candidates.append({"name": "Flurry of Blows", "stats": flurry, "detail": " Costs 1 Ki Point; two unarmed strikes."})
+            flurry_names = ["Flurry of Blows"]
+            if ("Monk", "Way of the Open Hand") in selected_subclasses:
+                flurry_names = ["Flurry of Blows: Topple", "Flurry of Blows: Stagger", "Flurry of Blows: Push"]
+            elif ("Monk", "Way of the Drunken Master") in selected_subclasses:
+                flurry_names = ["Drunken Technique"]
+            for flurry_name in flurry_names:
+                bonus_candidates.append({"name": flurry_name, "stats": flurry, "detail": " Costs 1 Ki Point; two unarmed strikes. " + COMBAT_ACTION_DESCRIPTIONS.get(flurry_name, "") + (f" Each strike includes {', '.join(unarmed_notes)}." if unarmed_notes else "")})
 
     selections = {}
     for values, item_id in zip(spell_values or [], spell_ids or []):
@@ -4922,6 +5139,7 @@ def static_item_ac_bonus(row: dict[str, str], slot: str) -> int:
     Input("abilities-store", "data"), Input("feat-effects-store", "data"),
     Input("equipment-effects-store", "data"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    Input({"type": "level-class", "level": ALL}, "value"),
     Input("equipment-melee-main", "value"), Input("equipment-melee-off", "value"),
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
@@ -4929,7 +5147,7 @@ def static_item_ac_bonus(row: dict[str, str], slot: str) -> int:
     Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
 )
-def calculate_armour_class(ability_data, feat_effects, equipment_effects, class_choices, *item_ids):
+def calculate_armour_class(ability_data, feat_effects, equipment_effects, class_choices, class_values, *item_ids):
     ability_data, feat_effects = ability_data or {}, feat_effects or {}
     dexterity = final_ability_scores(ability_data, feat_effects, equipment_effects)["Dexterity"]
     dexterity_bonus = ability_modifier(dexterity)
@@ -4937,12 +5155,20 @@ def calculate_armour_class(ability_data, feat_effects, equipment_effects, class_
     equipped = [(slot, EQUIPMENT_BY_ID.get(item_id)) for slot, item_id in zip(slots, item_ids) if EQUIPMENT_BY_ID.get(item_id)]
 
     armour_row = next((row for slot, row in equipped if slot == "armour" and row["category"] == "armour"), None)
+    shield_equipped = any(row["category"] == "shield" for _, row in equipped)
+    armour_piece_equipped = any(
+        row["category"] == "armour" or row.get("proficiency", "").lower() in {"light armour", "medium armour", "heavy armour"}
+        for _, row in equipped
+    )
     armour_bonus = max(0, formula_base(armour_row.get("armour_class", "")) - 10) if armour_row else 0
     shield_bonus = sum(formula_base(row.get("armour_class", "")) for slot, row in equipped if row["category"] == "shield")
     other_bonus = sum(static_item_ac_bonus(row, slot) for slot, row in equipped if row is not armour_row and row["category"] != "shield")
     selected_choices = [item for value in class_choices or [] for item in (value if isinstance(value, list) else [value]) if item]
     fighting_style_bonus = 1 if armour_row and "Defence" in selected_choices else 0
-    armour_class = 10 + dexterity_bonus + armour_bonus + shield_bonus + other_bonus + fighting_style_bonus
+    monk_level = sum(value == "Monk" for value in (class_values or []))
+    wisdom_bonus = ability_modifier(final_ability_scores(ability_data, feat_effects, equipment_effects)["Wisdom"])
+    monk_unarmoured_bonus = wisdom_bonus if monk_level and not armour_piece_equipped and not shield_equipped else 0
+    armour_class = 10 + dexterity_bonus + armour_bonus + shield_bonus + other_bonus + fighting_style_bonus + monk_unarmoured_bonus
     sources = [f"10 base", f"Dexterity {dexterity_bonus:+d}"]
     if armour_bonus:
         sources.append(f"Armour {armour_bonus:+d}")
@@ -4952,6 +5178,8 @@ def calculate_armour_class(ability_data, feat_effects, equipment_effects, class_
         sources.append(f"Other equipment {other_bonus:+d}")
     if fighting_style_bonus:
         sources.append("Defence fighting style +1")
+    if monk_unarmoured_bonus:
+        sources.append(f"Monk Unarmoured Defence (Wisdom) {monk_unarmoured_bonus:+d}")
     return str(armour_class), " + ".join(sources)
 
 
@@ -5165,7 +5393,7 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
                 continue
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == feature.lower()), None)
             if feature_row:
-                merge(defensive_effects(feature_row["description"], f"{class_name} — {feature}"))
+                merge(defensive_effects(CLASS_FEATURE_OVERRIDES.get(feature) or feature_row["description"], f"{class_name} — {feature}"))
 
     for feat in dict.fromkeys(value for value in feat_values or [] if value):
         feat_row = next((row for row in FEATS if row["feat"] == feat), None)
@@ -5206,11 +5434,14 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
     Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
     Input("feat-effects-store", "data"),
+    Input("equipment-melee-off", "value"), Input("equipment-headwear", "value"),
+    Input("equipment-armour", "value"), Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
     State("character-store", "data"),
     State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
 )
 def update_summary(name, race, subrace, background, human_skill, level_classes, level_subclasses,
-                   class_choice_values, feat_effects, _stored, class_choice_ids):
+                   class_choice_values, feat_effects, melee_off_id, headwear_id, armour_id, handwear_id,
+                   footwear_id, _stored, class_choice_ids):
     race_row = next((row for row in RACES if row["race"] == race), None)
     subrace_row = next(
         (row for row in RACES if row["race"] == race and row["subrace"] == subrace),
@@ -5228,6 +5459,18 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
     )
 
     movement = metric_movement(race_row["base_speed"]) if race_row else "—"
+    monk_level = sum(value == "Monk" for value in (level_classes or []))
+    movement_equipment = [EQUIPMENT_BY_ID.get(value) for value in (melee_off_id, headwear_id, armour_id, handwear_id, footwear_id) if value]
+    wears_shield = any(row and row.get("category") == "shield" for row in movement_equipment)
+    wears_armour = any(
+        row and (row.get("category") == "armour" or row.get("proficiency", "").lower() in {"light armour", "medium armour", "heavy armour"})
+        for row in movement_equipment
+    )
+    if race_row and monk_level >= 2 and not wears_shield and not wears_armour:
+        base_match = re.search(r"(\d+(?:\.\d+)?)\s*m", race_row["base_speed"])
+        if base_match:
+            monk_bonus = 6 if monk_level >= 10 else 4.5 if monk_level >= 6 else 3
+            movement = f"{float(base_match.group(1)) + monk_bonus:g} m"
     class_proficiencies = []
     seen_classes = set()
     for index, class_name in enumerate(level_classes or []):
