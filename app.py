@@ -137,6 +137,10 @@ CHOICE_FEAT_ABILITIES = {
     "Weapon Master": ["Strength", "Dexterity"], "Resilient": ABILITIES,
 }
 RITUAL_SPELLS = ["Speak with Dead", "Find Familiar", "Longstrider", "Enhance Leap", "Disguise Self", "Speak with Animals"]
+WARLOCK_LEVEL_2_INVOCATIONS = [
+    "Agonising Blast", "Armour of Shadows", "Beast Speech", "Beguiling Influence", "Devil's Sight",
+    "Fiendish Vigour", "Mask of Many Faces", "One with Shadows", "Repelling Blast", "Thief of Five Fates",
+]
 SPELL_SNIPER_CANTRIPS = ["Bone Chill", "Eldritch Blast", "Fire Bolt", "Ray of Frost", "Shocking Grasp", "Thorn Whip"]
 MANOEUVRES = ["Commander's Strike", "Disarming Attack", "Distracting Strike", "Evasive Footwork", "Feinting Attack", "Goading Attack", "Manoeuvring Attack", "Menacing Attack", "Precision Attack", "Pushing Attack", "Rally", "Riposte", "Sweeping Attack", "Trip Attack"]
 ARCANE_SHOTS = ["Arcane Shot: Banishing Arrow", "Arcane Shot: Beguiling Arrow", "Arcane Shot: Bursting Arrow", "Arcane Shot: Enfeebling Arrow", "Arcane Shot: Grasping Arrow", "Arcane Shot: Piercing Arrow", "Arcane Shot: Seeking Arrow", "Arcane Shot: Shadow Arrow"]
@@ -2284,6 +2288,15 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
     proficient_skills.update((feat_effects or {}).get("skills", []))
     proficient_skills.update((feat_effects or {}).get("expertise", []))
     proficient_skills.update((skill_state or {}).get("proficiencies", []))
+    class_counts = Counter(value for value in class_values or [] if value)
+    selected_subclasses = {(class_name, subclass) for class_name, subclass in zip(class_values or [], subclass_values or []) if class_name and subclass}
+    if class_counts.get("Fighter", 0) >= 3 and ("Fighter", "Arcane Archer") in selected_subclasses:
+        proficient_skills.update({"Arcana", "Nature"})
+    if class_counts.get("Monk", 0) >= 3 and ("Monk", "Way of the Drunken Master") in selected_subclasses:
+        proficient_skills.add("Performance")
+    if class_counts.get("Wizard", 0) >= 2 and ("Wizard", "Bladesinging") in selected_subclasses:
+        proficient_skills.add("Performance")
+    used_unique["Skill Proficiencies"].update(proficient_skills)
     used_unique["Skill Proficiencies"].update(proficient_skills)
     ranger_skill_grants = {
         "Bounty Hunter": "Investigation", "Keeper of the Veil": "Arcana", "Mage Breaker": "Arcana",
@@ -2299,6 +2312,12 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             proficient_skills.update(skill for skill, ability in SKILL_TO_ABILITY.items() if ability in chosen)
         elif feature == "Astral Knowledge":
             proficient_skills.update(skill for skill, ability in SKILL_TO_ABILITY.items() if ability in chosen)
+        elif feature == "Knowledge Domain Expertise":
+            proficient_skills.update(skill for skill in chosen if skill in SKILL_TO_ABILITY)
+            used_unique["Skill Proficiencies"].update(skill for skill in chosen if skill in SKILL_TO_ABILITY)
+        elif feature == "Eldritch Invocations" and "Beguiling Influence" in chosen:
+            proficient_skills.update({"Deception", "Persuasion"})
+            used_unique["Skill Proficiencies"].update({"Deception", "Persuasion"})
 
     def choice_control(level, feature, label, values, multi=False, limit=None, unique=False, valid_only=False):
         current = existing.get((level, feature))
@@ -2316,7 +2335,8 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         for value in values:
             style = next((row for row in FIGHTING_STYLES if row["fighting_style"] == value), None)
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == value.lower()), None)
-            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
+            invocation_description = "Gain proficiency in Deception and Persuasion." if value == "Beguiling Influence" else "Eldritch Invocation selected as a Warlock class feature." if value in WARLOCK_LEVEL_2_INVOCATIONS else ""
+            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or invocation_description or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
             tooltip = f"{value} | {description}" if description else value
             option_rows.append({"label": option_label(value, [description], tooltip=tooltip), "value": value, "search": f"{value} {description}"})
         if unique:
@@ -2347,12 +2367,30 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             controls.append(choice_control(
                 level, "Astral Knowledge", "Astral Knowledge ability", ABILITIES,
             ))
+        if class_name == "Cleric" and class_level == 1 and subclass == "Knowledge Domain":
+            controls.append(choice_control(
+                level, "Knowledge Domain Expertise", "Knowledge Domain Expertise (2)",
+                ["Arcana", "History", "Nature", "Religion"], multi=True, limit=2, valid_only=True,
+            ))
+        if class_name == "Cleric" and class_level == 1 and subclass == "Nature Domain":
+            controls.append(choice_control(
+                level, "Skill Proficiencies", "Acolyte of Nature Skill (1)",
+                ["Animal Handling", "Nature", "Survival"], multi=True, limit=1,
+                unique=True, valid_only=True,
+            ))
+        if class_name == "Warlock" and class_level == 2:
+            controls.append(choice_control(
+                level, "Eldritch Invocations", "Eldritch Invocations (2)", WARLOCK_LEVEL_2_INVOCATIONS,
+                multi=True, limit=2, valid_only=True,
+            ))
 
         if counts[class_name] == 1:
             class_row = next(row for row in CLASSES if row["class"] == class_name)
             multiclass_skill_choices = {"Bard": 1, "Cleric": 2, "Ranger": 1, "Rogue": 1}
             skill_limit = int(class_row.get("skill_proficiency_choices") or 0) if level == 1 else multiclass_skill_choices.get(class_name, 0)
             skill_options = [skill for skill in SKILL_TO_ABILITY if skill in class_row.get("skill_proficiencies", "")]
+            if class_name == "Warlock":
+                skill_options = [skill for skill in skill_options if skill != "Nature"]
             if skill_limit and skill_options:
                 controls.append(choice_control(
                     level, "Skill Proficiencies", f"Skill Proficiencies ({skill_limit})",
@@ -2453,6 +2491,8 @@ def calculate_feat_effects(feat_values, choice_values, choice_ids):
             proficiencies.add("Heavy armour")
         elif feat == "Weapon Master":
             proficiencies.update((selected.get("weapons") or [])[:4])
+        if feat == "Performer":
+            proficiencies.add("Musical Instruments")
     return {"ability_bonuses": dict(bonuses), "skills": sorted(skills), "expertise": sorted(expertise), "saving_throws": sorted(saving_throws), "proficiencies": sorted(proficiencies), "selections": selections, "feats": [feat for feat in (feat_values or []) if feat]}
 
 
@@ -2544,7 +2584,7 @@ def render_sheet_leveling(class_values, subclass_values, feat_values, ability_da
         if source_class and value:
             chosen = value if isinstance(value, list) else [value]
             category = item_id.get("feature", "")
-            if category == "Expertise":
+            if category in {"Expertise", "Knowledge Domain Expertise"}:
                 displayed = [f"Expertise: {choice}" for choice in chosen]
             elif category == "Skill Proficiencies":
                 displayed = [f"Skill Proficiency: {choice}" for choice in chosen]
@@ -2883,13 +2923,15 @@ def render_saving_throws(ability_data, feat_effects, equipment_effects, race, su
     Input("subrace-dropdown", "value"),
     Input("human-versatility-skill", "value"),
     Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "level-subclass", "level": ALL}, "value"),
     Input("feat-effects-store", "data"),
     Input("skill-state-store", "data"),
     Input("equipment-effects-store", "data"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
     State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
 )
-def render_skills(ability_data, background, race, subrace, human_skill, level_classes, feat_effects, skill_state, equipment_effects, class_choice_values, class_choice_ids):
+def render_skills(ability_data, background, race, subrace, human_skill, level_classes, level_subclasses,
+                  feat_effects, skill_state, equipment_effects, class_choice_values, class_choice_ids):
     ability_data = ability_data or {}
     skill_state = skill_state or {}
     feat_effects = feat_effects or {}
@@ -2921,6 +2963,14 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
         proficient.add(human_skill)
     proficient |= set(feat_effects.get("skills", []))
     proficient |= expertise
+    class_counts = Counter(value for value in level_classes or [] if value)
+    selected_subclasses = {(class_name, subclass) for class_name, subclass in zip(level_classes or [], level_subclasses or []) if class_name and subclass}
+    if class_counts.get("Fighter", 0) >= 3 and ("Fighter", "Arcane Archer") in selected_subclasses:
+        proficient.update({"Arcana", "Nature"})
+    if class_counts.get("Monk", 0) >= 3 and ("Monk", "Way of the Drunken Master") in selected_subclasses:
+        proficient.add("Performance")
+    if class_counts.get("Wizard", 0) >= 2 and ("Wizard", "Bladesinging") in selected_subclasses:
+        proficient.add("Performance")
     ranger_skill_grants = {
         "Bounty Hunter": "Investigation", "Keeper of the Veil": "Arcana", "Mage Breaker": "Arcana",
         "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
@@ -2931,6 +2981,15 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
             continue
         if item_id.get("feature") == "Expertise":
             expertise.update((value if isinstance(value, list) else [value])[:2])
+            continue
+        if item_id.get("feature") == "Knowledge Domain Expertise":
+            selected_expertise = (value if isinstance(value, list) else [value])[:2]
+            expertise.update(selected_expertise)
+            proficient.update(selected_expertise)
+            continue
+        if item_id.get("feature") == "Eldritch Invocations":
+            if "Beguiling Influence" in (value if isinstance(value, list) else [value]):
+                proficient.update({"Deception", "Persuasion"})
             continue
         if item_id.get("feature") in {"Knowledge of the Ages", "Astral Knowledge"}:
             for ability in (value if isinstance(value, list) else [value]):
@@ -3629,7 +3688,7 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
         active_features.discard("Pact Weapon")
     cards = []
     styles = list(dict.fromkeys(selected.get("Fighting Style", [])))
-    profs = character_equipment_proficiencies(race, subrace, class_values, feat_effects)
+    profs = character_equipment_proficiencies(race, subrace, class_values, feat_effects, subclass_values)
 
     def describe_weapon(row, slot, modifiers, proficiency, offhand_present=False, thrown=False):
         properties = row.get("shared_properties", "").lower()
@@ -4785,7 +4844,7 @@ def render_sheet_spells(values, level_classes, level_subclasses, class_choice_va
     return cards or html.P("Selected spells will appear here.", className="sheet-empty")
 
 
-def character_equipment_proficiencies(race, subrace, level_classes, feat_effects) -> set[str]:
+def character_equipment_proficiencies(race, subrace, level_classes, feat_effects, level_subclasses=None) -> set[str]:
     race_row = next((row for row in RACES if row["race"] == race), None)
     subrace_row = next((row for row in RACES if row["race"] == race and row["subrace"] == subrace), None)
     values = [race_row["race_proficiencies"] if race_row else "", subrace_row["subrace_proficiencies"] if subrace_row else ""]
@@ -4799,7 +4858,26 @@ def character_equipment_proficiencies(race, subrace, level_classes, feat_effects
         values.append(row["equipment_proficiencies"] if index == 0 else row["multiclass_proficiencies"])
         seen.add(class_name)
     values.extend((feat_effects or {}).get("proficiencies", []))
+    subclass_pairs = {(class_name, subclass) for class_name, subclass in zip(level_classes or [], level_subclasses or []) if class_name and subclass}
+    subclass_equipment = {
+        ("Bard", "College of Swords"): ["Medium armour", "Scimitars"],
+        ("Bard", "College of Valour"): ["Medium armour", "Shields", "Martial weapons"],
+        ("Cleric", "Death Domain"): ["Martial weapons"],
+        ("Cleric", "Life Domain"): ["Heavy armour"],
+        ("Cleric", "Nature Domain"): ["Heavy armour"],
+        ("Cleric", "Tempest Domain"): ["Heavy armour", "Martial weapons"],
+        ("Cleric", "War Domain"): ["Heavy armour", "Martial weapons"],
+        ("Warlock", "The Hexblade"): ["Medium armour", "Shields", "Martial weapons"],
+        ("Wizard", "Bladesinging"): ["Light armour", "Daggers", "Longswords", "Rapiers", "Scimitars", "Shortswords", "Sickles"],
+    }
+    for pair, proficiencies in subclass_equipment.items():
+        if pair in subclass_pairs:
+            values.extend(proficiencies)
     profs = {item.lower() for item in proficiency_items(*values)}
+    if "heavy armour" in profs:
+        profs.update({"medium armour", "light armour"})
+    if "medium armour" in profs:
+        profs.add("light armour")
     for row in WEAPON_PROFICIENCIES:
         if row["proficiency"].lower() in profs:
             profs.update(value.strip().lower() for value in row["included_weapon_types"].split(";") if value.strip())
@@ -4948,7 +5026,7 @@ def update_equipment_options(equipment_act, filter_values, race, subrace, classe
         ranged_main_id = saved_equipment.get("ranged_main") or ranged_main_id
         melee_off_id = saved_equipment.get("melee_off") or melee_off_id
         ranged_off_id = saved_equipment.get("ranged_off") or ranged_off_id
-    profs = character_equipment_proficiencies(race, subrace, classes, feat_effects)
+    profs = character_equipment_proficiencies(race, subrace, classes, feat_effects, subclasses)
     only_proficient = "proficient" in (filter_values or [])
     usable = [row for row in EQUIPMENT if equipment_earliest_act(row) <= int(equipment_act or 1) and "not usable by humanoids" not in row.get("special", "").lower()]
     if only_proficient:
@@ -5126,11 +5204,14 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
     Input("background-dropdown", "value"),
     Input("human-versatility-skill", "value"),
     Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
     Input("feat-effects-store", "data"),
     State("character-store", "data"),
+    State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
 )
-def update_summary(name, race, subrace, background, human_skill, level_classes, class_choice_values, feat_effects, _stored):
+def update_summary(name, race, subrace, background, human_skill, level_classes, level_subclasses,
+                   class_choice_values, feat_effects, _stored, class_choice_ids):
     race_row = next((row for row in RACES if row["race"] == race), None)
     subrace_row = next(
         (row for row in RACES if row["race"] == race and row["subrace"] == subrace),
@@ -5158,6 +5239,25 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
         class_row = next(row for row in CLASSES if row["class"] == class_name)
         class_proficiencies.append(class_row["equipment_proficiencies"] if index == 0 else class_row["multiclass_proficiencies"])
         seen_classes.add(class_name)
+    subclass_pairs = {(class_name, subclass) for class_name, subclass in zip(level_classes or [], level_subclasses or []) if class_name and subclass}
+    subclass_proficiencies = {
+        ("Bard", "College of Swords"): ["Medium armour", "Scimitars"],
+        ("Bard", "College of Valour"): ["Medium armour", "Shields", "Martial weapons"],
+        ("Cleric", "Death Domain"): ["Martial weapons"],
+        ("Cleric", "Life Domain"): ["Heavy armour"],
+        ("Cleric", "Nature Domain"): ["Heavy armour"],
+        ("Cleric", "Tempest Domain"): ["Heavy armour", "Martial weapons"],
+        ("Cleric", "War Domain"): ["Heavy armour", "Martial weapons"],
+        ("Warlock", "The Hexblade"): ["Medium armour", "Shields", "Martial weapons"],
+        ("Wizard", "Bladesinging"): ["Light armour", "Daggers", "Longswords", "Rapiers", "Scimitars", "Shortswords", "Sickles", "Performance"],
+        ("Fighter", "Arcane Archer"): ["Arcana", "Nature"],
+        ("Monk", "Way of the Drunken Master"): ["Performance"],
+    }
+    for pair, values in subclass_proficiencies.items():
+        if pair in subclass_pairs:
+            class_proficiencies.extend(values)
+    if "Bard" in seen_classes:
+        class_proficiencies.append("Musical Instruments")
 
     feat_effects = feat_effects or {}
     feat_proficiencies = list(feat_effects.get("proficiencies", []))
@@ -5178,6 +5278,13 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
         if choice
     ]
     feat_proficiencies += [
+        f"Expertise: {choice}"
+        for value, item_id in zip(class_choice_values or [], class_choice_ids or [])
+        if item_id.get("feature") == "Knowledge Domain Expertise"
+        for choice in (value if isinstance(value, list) else [value])[:2]
+        if choice
+    ]
+    feat_proficiencies += [
         choice
         for value, item_id in zip(class_choice_values or [], class_choice_ids or [])
         if item_id.get("feature") == "Skill Proficiencies"
@@ -5192,6 +5299,8 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
         for skill, skill_ability in SKILL_TO_ABILITY.items()
         if skill_ability == ability
     ]
+    if "Beguiling Influence" in selected_class_choices:
+        feat_proficiencies.extend(["Deception", "Persuasion"])
     if "Ranger Knight" in selected_class_choices:
         feat_proficiencies.append("Heavy armour")
     merged_proficiencies = collapse_weapon_proficiencies(proficiency_items(
