@@ -2588,9 +2588,11 @@ def update_ability_state(_step_clicks, _bonus_clicks, data):
     Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
     Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
+    Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
 )
-def calculate_equipment_effects(*equipment_ids):
-    return equipment_effect_data(equipment_ids)
+def calculate_equipment_effects(*values):
+    equipment_ids, race, subrace = values[:-2], values[-2], values[-1]
+    return equipment_effect_data(equipment_ids, race, subrace)
 
 
 @callback(
@@ -2686,6 +2688,15 @@ def render_saving_throws(ability_data, feat_effects, equipment_effects, race, su
     equipped = [EQUIPMENT_BY_ID.get(item_id) for item_id in equipment_ids if item_id]
     equipped = [row for row in equipped if row]
 
+    for ability, amount in (equipment_effects or {}).get("saving_throw_bonuses", {}).items():
+        if ability in ABILITIES:
+            bonuses[ability] += int(amount)
+            sources[ability].append(f"Race-activated equipment {int(amount):+d}")
+    for advantage in (equipment_effects or {}).get("saving_throw_advantages", []):
+        for ability in advantage.get("abilities", []):
+            if ability in ABILITIES:
+                notes[ability].append(f"{advantage.get('source', 'Equipment')}: {advantage.get('condition', 'Advantage')}")
+
     for row in equipped:
         special = row.get("special", "")
         proficiency_match = re.findall(r"Proficiency in (Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) Saving Throws", special, re.IGNORECASE)
@@ -2697,6 +2708,9 @@ def render_saving_throws(ability_data, feat_effects, equipment_effects, race, su
             if "saving throw" not in clause.lower() or "proficiency" in clause.lower():
                 continue
             if "death saving throw" in clause.lower():
+                continue
+            if re.search(r"\bgith(?:yanki)?\b", clause, re.IGNORECASE):
+                # Race-gated saving-throw effects are resolved in equipment_effect_data.
                 continue
             mentioned = [ability for ability in ABILITIES if re.search(rf"\b{ability}\b", clause, re.IGNORECASE)]
             conditional = any(term in clause.lower() for term in (
@@ -3104,8 +3118,10 @@ def equipment_granted_spells(equipment_ids) -> dict[str, list[str]]:
     return grants
 
 
-def equipment_effect_data(equipment_ids) -> dict:
+def equipment_effect_data(equipment_ids, race=None, subrace=None) -> dict:
     adjustments, lightning_items, reverberation_items, equipped_items = [], [], [], []
+    saving_throw_bonuses, saving_throw_advantages = Counter(), []
+    ancestry = f"{race or ''} {subrace or ''}".lower()
     for equipment_id in equipment_ids or []:
         row = EQUIPMENT_BY_ID.get(equipment_id)
         if not row:
@@ -3116,6 +3132,17 @@ def equipment_effect_data(equipment_ids) -> dict:
             lightning_items.append(item)
         if re.search(r"Reverberation", special, re.IGNORECASE):
             reverberation_items.append(item)
+        if item == "Nimblefinger Gloves":
+            dexterity_bonus = 2 if "gnome" in ancestry else 1 if any(name in ancestry for name in ("halfling", "dwarf", "duergar")) else 0
+            if dexterity_bonus:
+                adjustments.append({"ability": "Dexterity", "kind": "add", "value": dexterity_bonus, "cap": 30, "source": item})
+        if item == "Circlet of Psionic Revenge" and "githyanki" in ancestry:
+            for ability in ("Intelligence", "Wisdom", "Charisma"):
+                saving_throw_bonuses[ability] += 1
+        if item == "Aberration Hunters' Amulet" and "githyanki" in ancestry:
+            saving_throw_advantages.append({"abilities": ["Intelligence"], "source": item, "condition": "Advantage"})
+        if item == "Silver Sword of the Astral Plane" and "githyanki" in ancestry:
+            saving_throw_advantages.append({"abilities": ["Intelligence", "Wisdom", "Charisma"], "source": item, "condition": "Advantage"})
         for ability in ABILITIES:
             fixed_patterns = [
                 rf"set(?:s)? the wearer's {ability} score to\s*(\d+)",
@@ -3137,6 +3164,8 @@ def equipment_effect_data(equipment_ids) -> dict:
         "lightning_items": list(dict.fromkeys(lightning_items)),
         "reverberation_items": list(dict.fromkeys(reverberation_items)),
         "equipped_items": list(dict.fromkeys(equipped_items)),
+        "saving_throw_bonuses": dict(saving_throw_bonuses),
+        "saving_throw_advantages": saving_throw_advantages,
     }
 
 
@@ -3264,7 +3293,22 @@ def apply_charge_and_reverberation_effects(sequence, equipped_rows, starting_cha
     return total, list({(item["condition"], item["source"]): item for item in extra_conditions}.values())
 
 
-def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_level=0, active_features=None, barbarian_level=0, thrown=False):
+def racial_weapon_damage_expression(row, race=None, subrace=None, target_conditions=None, thrown=False):
+    ancestry = f"{race or ''} {subrace or ''}".lower()
+    item = (row or {}).get("item", "")
+    if "githyanki" in ancestry and item in {"Githyanki Greatsword (Psionic)", "Soulbreaker Greatsword"}:
+        return "1d4 Psychic"
+    if "githyanki" in ancestry and item == "Silver Sword of the Astral Plane":
+        return "1d6 Psychic"
+    if "drow" in ancestry and item == "Cruel Sting" and "Restrained" in (target_conditions or []):
+        return "1d4 Poison"
+    if thrown and any(name in ancestry for name in ("dwarf", "duergar")) and item == "Dwarven Thrower":
+        return "1d8 Bludgeoning"
+    return ""
+
+
+def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_level=0, active_features=None,
+                        barbarian_level=0, thrown=False, race=None, subrace=None, target_conditions=None):
     active_features = set(active_features or [])
     properties = row.get("shared_properties", "").lower()
     finesse = "finesse" in properties
@@ -3289,6 +3333,10 @@ def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_leve
         if versatile:
             expression = re.sub(r"^\d+d\d+", versatile.group(1), expression)
     stats = damage_expression_stats(expression)
+    racial_rider = racial_weapon_damage_expression(row, race, subrace, target_conditions, thrown)
+    if racial_rider:
+        stats = add_damage_stats(stats, damage_expression_stats(racial_rider))
+        expression += f"; {racial_rider}"
     return (stats[0] + flat, stats[1] + flat, stats[2] + flat), expression, ability, flat
 
 
@@ -3500,7 +3548,11 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
         hexed_weapon = bool(active_features & {"Hexed Weapon", "Pact Weapon"}) and slot == "melee main" and not thrown
         proficient = proficient_with_item(row, profs) or hexed_weapon
         monk_weapon = counts.get("Monk", 0) > 0 and proficient and "heavy" not in properties and "two-handed" not in properties
-        return weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand_present, thrown, proficient, monk_weapon, elevation, active_features)
+        description = weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand_present, thrown, proficient, monk_weapon, elevation, active_features)
+        racial_rider = racial_weapon_damage_expression(row, race, subrace, target_conditions, thrown)
+        if racial_rider:
+            description += f" Race-activated equipment adds {racial_rider}."
+        return description
     if styles:
         cards.append(html.Section([html.H3("Fighting Styles"), html.P(combat_action_tooltips(styles), className="attack-list")], className="spell-card"))
     attacks = []
@@ -3589,7 +3641,8 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
             throw_row = throwing_attack_row(row)
             throw_stats, _, _, _ = weapon_damage_stats(
                 throw_row, modifiers, styles, slot, offhand_present, counts.get("Monk", 0),
-                active_features, counts.get("Barbarian", 0), thrown=True,
+                active_features, counts.get("Barbarian", 0), thrown=True, race=race,
+                subrace=subrace, target_conditions=target_conditions,
             )
             equipped_names = set((equipment_effects or {}).get("equipped_items", []))
             for item_name, bonus in (("Ring of Flinging", "1d4"), ("Gloves of Uninhibited Kushigo", "1d4"),
@@ -3604,8 +3657,6 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
                 throw_stats = tuple(value + modifiers["Strength"] for value in throw_stats)
             if row["item"] == "Nyrulna":
                 throw_stats = add_damage_stats(throw_stats, damage_expression_stats("3d4"))
-            if row["item"] == "Dwarven Thrower" and "Dwarf" in f"{race or ''} {subrace or ''}":
-                throw_stats = add_damage_stats(throw_stats, damage_expression_stats("1d8"))
             if row["item"] == "Dwarven Thrower" and "Large or Larger" in (target_conditions or []):
                 throw_stats = add_damage_stats(throw_stats, damage_expression_stats("2d8"))
             if "Hunter's Marked" in (target_conditions or []):
@@ -3800,7 +3851,10 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     weapon_attacks = []
     for name, row, slot, offhand_present in main_weapons:
         if row and row["category"] in {"melee", "ranged"}:
-            per_hit, expression, ability, flat = weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_level, active_features, counts.get("Barbarian", 0))
+            per_hit, expression, ability, flat = weapon_damage_stats(
+                row, modifiers, styles, slot, offhand_present, monk_level, active_features,
+                counts.get("Barbarian", 0), race=race, subrace=subrace, target_conditions=target_conditions,
+            )
             improved_divine_smite = counts.get("Paladin", 0) >= 11 and row["category"] == "melee"
             if improved_divine_smite:
                 per_hit = add_damage_stats(per_hit, damage_expression_stats("1d8"))
@@ -3904,7 +3958,8 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             row = throwing_attack_row(row)
         per_hit, expression, ability, flat = weapon_damage_stats(
             row, modifiers, styles, slot, True, monk_level, active_features,
-            counts.get("Barbarian", 0), thrown=True,
+            counts.get("Barbarian", 0), thrown=True, race=race, subrace=subrace,
+            target_conditions=target_conditions,
         )
         notes = []
         for bonus_expression, source in throwing_boosts:
@@ -3931,9 +3986,9 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         if row["item"] == "Nyrulna":
             per_hit = add_damage_stats(per_hit, damage_expression_stats("3d4"))
             notes.append("Zephyr Connection +3d4 Thunder to the target-area explosion")
-        if row["item"] == "Dwarven Thrower" and "Dwarf" in f"{race or ''} {subrace or ''}":
-            per_hit = add_damage_stats(per_hit, damage_expression_stats("1d8"))
-            notes.append("Dwarven Thrower +1d8 Bludgeoning for a dwarf")
+        racial_rider = racial_weapon_damage_expression(row, race, subrace, target_conditions, thrown=True)
+        if racial_rider:
+            notes.append(f"Race-activated equipment +{racial_rider}")
         if row["item"] == "Dwarven Thrower" and "Large or Larger" in (target_conditions or []):
             per_hit = add_damage_stats(per_hit, damage_expression_stats("2d8"))
             notes.append("Dwarven Thrower +2d8 Bludgeoning against a Large or larger target")
@@ -4004,7 +4059,11 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
 
     for name, row, slot in [("Off-Hand Melee", melee_off, "melee off"), ("Off-Hand Ranged", ranged_off, "ranged off")]:
         if row and row["category"] in {"melee", "ranged"}:
-            stats, expression, ability, flat = weapon_damage_stats(row, modifiers, styles, slot, True, monk_level, active_features, counts.get("Barbarian", 0))
+            stats, expression, ability, flat = weapon_damage_stats(
+                row, modifiers, styles, slot, True, monk_level, active_features,
+                counts.get("Barbarian", 0), race=race, subrace=subrace,
+                target_conditions=target_conditions,
+            )
             if counts.get("Paladin", 0) >= 11 and row["category"] == "melee":
                 stats = add_damage_stats(stats, damage_expression_stats("1d8"))
             if counts.get("Paladin", 0) >= 7 and ("Paladin", "Oathbreaker") in selected_subclasses and row["category"] == "melee":
@@ -4954,9 +5013,12 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
                 merge(defensive_effects(RANGER_NATURAL_EXPLORERS[choice], f"Ranger - {choice}"))
 
     slot_names = ["Melee main hand", "Melee off hand", "Ranged main hand", "Ranged off hand", "Headwear", "Armour", "Handwear", "Footwear", "Cape", "Necklace", "Ring 1", "Ring 2"]
+    ancestry = f"{race or ''} {subrace or ''}".lower()
     for slot, item_id in zip(slot_names, item_ids):
         row = EQUIPMENT_BY_ID.get(item_id)
         if row:
+            if row["item"] in {"Psionic Ward Armour", "Silver Sword of the Astral Plane"} and "githyanki" not in ancestry:
+                continue
             merge(defensive_effects(row.get("special", ""), f"{row['item']} ({slot})"))
 
     return [
