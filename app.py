@@ -5083,8 +5083,7 @@ def manage_act_loadouts(selected_act, *args):
     previous_act = int(stored.get("active_act") or 1)
 
     def save_and_inherit(act, slot_values):
-        """Save one act and carry unchanged inherited slots forward only."""
-        old_upstream = dict(loadouts.get(str(act)) or {})
+        """Save one act and fill only empty slots in later acts."""
         new_upstream = dict(zip(EQUIPMENT_SLOT_IDS, slot_values))
         loadouts[str(act)] = new_upstream
         for later_act in range(act + 1, 4):
@@ -5093,10 +5092,10 @@ def manage_act_loadouts(selected_act, *args):
             new_downstream = dict(old_downstream)
             for slot in EQUIPMENT_SLOT_IDS:
                 downstream_value = old_downstream.get(slot)
-                if slot not in old_downstream or downstream_value is None or downstream_value == old_upstream.get(slot):
+                if slot not in old_downstream or downstream_value in (None, ""):
                     new_downstream[slot] = new_upstream.get(slot)
             loadouts[key] = new_downstream
-            old_upstream, new_upstream = old_downstream, new_downstream
+            new_upstream = new_downstream
 
     if ctx.triggered_id == "equipment-act-tab":
         save_and_inherit(previous_act, values)
