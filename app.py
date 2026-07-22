@@ -5339,8 +5339,29 @@ def manage_act_loadouts(selected_act, *args):
         target = loadouts.get(str(int(selected_act)), {})
         stored.update({"active_act": int(selected_act), "loadouts": loadouts})
         return *[target.get(slot) for slot in EQUIPMENT_SLOT_IDS], stored
-    save_and_inherit(int(selected_act or previous_act), values)
-    stored.update({"active_act": int(selected_act or previous_act), "loadouts": loadouts})
+
+    # Restoring a loadout changes several dropdowns at once, and dependent weapon
+    # callbacks can follow with another update.  Saving the entire visible form
+    # for each of those events can combine values from two acts.  Persist only
+    # the controls that triggered this callback, leaving every other saved slot
+    # untouched.
+    active_act = int(selected_act or previous_act)
+    triggered_ids = set(ctx.triggered_prop_ids.values())
+    changed_slots = [slot for slot in EQUIPMENT_SLOT_IDS if f"equipment-{slot}" in triggered_ids]
+    current_loadout = dict(loadouts.get(str(active_act)) or {})
+    for slot in changed_slots:
+        slot_value = values[EQUIPMENT_SLOT_IDS.index(slot)]
+        current_loadout[slot] = slot_value
+        inherited_value = slot_value
+        for later_act in range(active_act + 1, 4):
+            later_loadout = dict(loadouts.get(str(later_act)) or {})
+            if slot not in later_loadout or later_loadout.get(slot) in (None, ""):
+                later_loadout[slot] = inherited_value
+                loadouts[str(later_act)] = later_loadout
+            else:
+                inherited_value = later_loadout.get(slot)
+    loadouts[str(active_act)] = current_loadout
+    stored.update({"active_act": active_act, "loadouts": loadouts})
     return *([no_update] * len(EQUIPMENT_SLOT_IDS)), stored
 
 
