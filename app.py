@@ -4195,8 +4195,8 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         twin_eligible = not any(term in area_text for term in ("radius", "cone", " line", "surface", "surrounding", "all creatures", "each creature", "self"))
         add_spell_candidate(candidate, row, is_cantrip, twin_eligible)
 
-    # An Arcane Shot modifies one arrow within the Attack action; any remaining
-    # attacks granted by Extra Attack still deal their normal weapon damage.
+    # Each ranged attack can spend its own Arcane Arrow charge, including every
+    # attack supplied by Extra Attack in the same Attack action.
     selected_arcane_shots = [value for value in selected_choices if value in ARCANE_SHOTS]
     if limited and ranged_attack:
         for shot in selected_arcane_shots:
@@ -4204,17 +4204,24 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             bonus_match = re.search(r"(?:plus|\+)\s*(\d+d\d+)", description, re.IGNORECASE)
             bonus_expression = bonus_match.group(1) if bonus_match else ""
             bonus_stats = damage_expression_stats(bonus_expression)
-            stats = add_damage_stats(ranged_attack["candidate"]["stats"], bonus_stats)
             weapon_type = ranged_attack["row"].get("damage_type", "Weapon")
             shot_types = damage_types_in(description)
-            detail = f" One Arcane Arrow; {ranged_attack['row']['damage']} {weapon_type} weapon damage"
+            detail = f" One Arcane Arrow charge; {ranged_attack['row']['damage']} {weapon_type} weapon damage"
             detail += f" plus {bonus_expression}." if bonus_expression else "; no additional initial damage die."
             detail += f" Damage types: {', '.join(list(dict.fromkeys(damage_types_in(weapon_type) + shot_types))) or 'Weapon'}."
+            detail += f" Effect: {description}"
             shot_stats = add_damage_stats(ranged_attack["per_hit"], bonus_stats)
-            components = [{"name": f"{shot}: {ranged_attack['row']['item']}", "stats": shot_stats, "detail": detail}]
-            extra_attack_detail = ranged_attack["candidate"]["components"][0]["detail"] + " Extra Attack granted by the same Action."
-            components.extend({"name": f"Ranged Attack: {ranged_attack['row']['item']}", "stats": ranged_attack["per_hit"], "detail": extra_attack_detail} for _ in range(max(0, attacks_per_action - 1)))
-            action_candidates.append({"name": f"{shot}: {ranged_attack['row']['item']}", "stats": stats, "detail": detail, "components": components})
+            stats = tuple(value * attacks_per_action for value in shot_stats)
+            components = [
+                {"name": f"{shot}: {ranged_attack['row']['item']}", "stats": shot_stats, "detail": detail}
+                for _ in range(attacks_per_action)
+            ]
+            action_candidates.append({
+                "name": f"{shot} x{attacks_per_action}: {ranged_attack['row']['item']}",
+                "stats": stats,
+                "detail": f"Uses {attacks_per_action} Arcane Arrow charge{'s' if attacks_per_action != 1 else ''}; one for each ranged attack.",
+                "components": components,
+            })
 
     if limited and any(value in MANOEUVRES for value in selected_choices) and action_candidates:
         die = "1d10" if counts.get("Fighter", 0) >= 10 else "1d8"
