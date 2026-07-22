@@ -2457,24 +2457,28 @@ def render_sheet_leveling(class_values, subclass_values, feat_values, ability_da
     earned_features = [feature for feature in earned_features if feature not in combat_actions]
 
     selected_by_class = {}
+    selected_categories_by_class = {}
     for value, item_id in zip(class_choice_values or [], class_choice_ids or []):
         level_index = int(item_id.get("level", 0)) - 1
         source_class = class_values[level_index] if 0 <= level_index < len(class_values or []) else None
         if source_class and value:
-            selected_by_class.setdefault(source_class, []).extend(value if isinstance(value, list) else [value])
-    style_names = {row["fighting_style"] for row in FIGHTING_STYLES}
+            chosen = value if isinstance(value, list) else [value]
+            selected_by_class.setdefault(source_class, []).extend(chosen)
+            selected_categories_by_class.setdefault(source_class, {}).setdefault(item_id.get("feature", ""), []).extend(chosen)
     feature_groups = []
     for class_name, class_features in features_by_class.items():
         values = [feature for feature in class_features if feature.lower() not in spell_names and feature not in combat_actions]
         selected_values = selected_by_class.get(class_name, [])
-        if "Pact Boon" in values and any(choice in PACT_BOONS for choice in selected_values):
-            values = [feature for feature in values if feature != "Pact Boon"]
-        if any(choice in RANGER_FAVOURED_ENEMIES for choice in selected_values):
-            values = [feature for feature in values if feature != "Favoured Enemy"]
-        if any(choice in RANGER_NATURAL_EXPLORERS for choice in selected_values):
-            values = [feature for feature in values if feature != "Natural Explorer"]
-        if any(choice in style_names for choice in selected_values):
-            values = [feature for feature in values if not feature.lower().startswith("fighting style")]
+        category_choices = selected_categories_by_class.get(class_name, {})
+
+        def normalized_choice_label(text):
+            text = text.replace("’", "'").lower()
+            text = re.sub(r"\s*\(choose\s+\d+\)\s*", "", text)
+            return text.strip(" :")
+
+        chosen_categories = {normalized_choice_label(category) for category, chosen in category_choices.items() if chosen}
+        if chosen_categories:
+            values = [feature for feature in values if normalized_choice_label(feature) not in chosen_categories]
         values.extend(choice for choice in selected_values if choice not in combat_actions)
         values = list(dict.fromkeys(values))
         if values:
