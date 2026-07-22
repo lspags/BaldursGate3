@@ -142,6 +142,20 @@ MANOEUVRES = ["Commander's Strike", "Disarming Attack", "Distracting Strike", "E
 ARCANE_SHOTS = ["Arcane Shot: Banishing Arrow", "Arcane Shot: Beguiling Arrow", "Arcane Shot: Bursting Arrow", "Arcane Shot: Enfeebling Arrow", "Arcane Shot: Grasping Arrow", "Arcane Shot: Piercing Arrow", "Arcane Shot: Seeking Arrow", "Arcane Shot: Shadow Arrow"]
 METAMAGIC_BASIC = ["Careful Spell", "Distant Spell", "Extended Spell", "Twinned Spell"]
 METAMAGIC_ADVANCED = ["Heightened Spell", "Quickened Spell", "Subtle Spell"]
+RANGER_FAVOURED_ENEMIES = {
+    "Bounty Hunter": "Investigation proficiency; targets of Ensnaring Strike have Disadvantage on their save.",
+    "Keeper of the Veil": "Arcana proficiency and Protection from Evil and Good once per Long Rest.",
+    "Mage Breaker": "Arcana proficiency and the True Strike cantrip.",
+    "Ranger Knight": "History proficiency and Heavy Armour proficiency.",
+    "Sanctified Stalker": "Religion proficiency and the Sacred Flame cantrip.",
+}
+RANGER_NATURAL_EXPLORERS = {
+    "Beast Tamer": "Find Familiar once per Short Rest.",
+    "Urban Tracker": "Sleight of Hand proficiency.",
+    "Wasteland Wanderer: Cold": "Resistance to Cold damage.",
+    "Wasteland Wanderer: Fire": "Resistance to Fire damage.",
+    "Wasteland Wanderer: Poison": "Resistance to Poison damage.",
+}
 SWORDS_BARD_ATTACKS = ["Defensive Flourish (Melee)", "Defensive Flourish (Ranged)", "Slashing Flourish (Melee)", "Slashing Flourish (Ranged)", "Mobile Flourish (Melee)", "Mobile Flourish (Ranged)"]
 SUBCLASS_ATTACK_FEATURES = {
     "Frenzied Strike", "Enraged Throw",
@@ -242,14 +256,17 @@ def proficiency_bonus(level: int) -> int:
     return 2
 
 
-def feat_choice_dropdown(level: int, field: str, label: str, options, multi: bool = False):
+def feat_choice_dropdown(level: int, field: str, label: str, options, multi: bool = False, value=None):
     return html.Div(
         [html.Label(label), dcc.Dropdown(
             id={"type": "feat-choice", "level": level, "field": field},
             options=[{"label": option, "value": option} for option in options],
             multi=multi,
+            value=value,
             placeholder=f"Choose {label.lower()}",
             className="rich-dropdown compact-dropdown",
+            persistence=True,
+            persistence_type="session",
         )],
         className="feat-choice-field",
     )
@@ -671,7 +688,7 @@ def class_feature_tooltips(features, inline_descriptions=None):
             row = next((item for item in CLASS_FEATURES if item["feature"].lower().split(" (")[0] == feature.lower().split(" (")[0]), None)
         wiki_description = row["description"] if row else ""
         inline_description = inline_descriptions.get(feature, "")
-        description = CLASS_FEATURE_OVERRIDES.get(feature) or PACT_BOONS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
+        description = CLASS_FEATURE_OVERRIDES.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
         if rendered:
             rendered.append(", ")
         rendered.append(html.Span(feature, className="sheet-tooltip-term", tabIndex=0, **{"data-tooltip": description[:900]}))
@@ -2175,40 +2192,47 @@ def update_level_rows(class_values, subclass_values):
 @callback(
     Output({"type": "feat-choice-container", "level": ALL}, "children"),
     Input({"type": "level-feat", "level": ALL}, "value"),
+    State({"type": "feat-choice", "level": ALL, "field": ALL}, "value"),
+    State({"type": "feat-choice", "level": ALL, "field": ALL}, "id"),
 )
-def render_feat_choices(feat_values):
+def render_feat_choices(feat_values, current_values, current_ids):
+    existing = {(item_id["level"], item_id["field"]): value for value, item_id in zip(current_values or [], current_ids or [])}
+
+    def feat_control(level, field, label, options, multi=False):
+        return feat_choice_dropdown(level, field, label, options, multi, existing.get((level, field)))
+
     cards = []
     for level, feat in enumerate(feat_values or [], 1):
         controls, note = [], ""
         if feat == "Ability Improvement":
             controls = [
-                feat_choice_dropdown(level, "ability_primary", "First ability point", ABILITIES),
-                feat_choice_dropdown(level, "ability_secondary", "Second ability point", ABILITIES),
+                feat_control(level, "ability_primary", "First ability point", ABILITIES),
+                feat_control(level, "ability_secondary", "Second ability point", ABILITIES),
             ]
             note = "Choose the same ability twice for +2, or two different abilities for +1 each. Scores cannot exceed 20."
         elif feat in CHOICE_FEAT_ABILITIES:
-            controls.append(feat_choice_dropdown(level, "ability", "Ability +1", CHOICE_FEAT_ABILITIES[feat]))
+            controls.append(feat_control(level, "ability", "Ability +1", CHOICE_FEAT_ABILITIES[feat]))
             if feat == "Weapon Master":
-                controls.append(feat_choice_dropdown(level, "weapons", "Four weapon types", WEAPON_TYPES, True))
+                controls.append(feat_control(level, "weapons", "Four weapon types", WEAPON_TYPES, True))
         elif feat in FIXED_FEAT_ABILITIES:
             ability, amount = FIXED_FEAT_ABILITIES[feat]
             note = f"Applies {ability} +{amount} automatically."
         if feat == "Elemental Adept":
-            controls.append(feat_choice_dropdown(level, "element", "Damage type", ["Acid", "Cold", "Fire", "Lightning", "Thunder"]))
+            controls.append(feat_control(level, "element", "Damage type", ["Acid", "Cold", "Fire", "Lightning", "Thunder"]))
         elif feat and feat.startswith("Magic Initiate:"):
             spell_class = feat.split(":", 1)[1].strip()
             cantrips = sorted({row["spell"] for row in MAGIC_INITIATE_SPELLS if row["class"] == spell_class and row["level"] == "C"})
             spells = sorted({row["spell"] for row in MAGIC_INITIATE_SPELLS if row["class"] == spell_class and row["level"] == "1"})
-            controls += [feat_choice_dropdown(level, "cantrips", "Two cantrips", cantrips, True), feat_choice_dropdown(level, "spell", "Level 1 spell", spells)]
+            controls += [feat_control(level, "cantrips", "Two cantrips", cantrips, True), feat_control(level, "spell", "Level 1 spell", spells)]
             note = "Select no more than two cantrips."
         elif feat == "Martial Adept":
-            controls.append(feat_choice_dropdown(level, "manoeuvres", "Two manoeuvres", MANOEUVRES, True)); note = "Select no more than two manoeuvres."
+            controls.append(feat_control(level, "manoeuvres", "Two manoeuvres", MANOEUVRES, True)); note = "Select no more than two manoeuvres."
         elif feat == "Ritual Caster":
-            controls.append(feat_choice_dropdown(level, "rituals", "Two ritual spells", RITUAL_SPELLS, True)); note = "Select no more than two spells."
+            controls.append(feat_control(level, "rituals", "Two ritual spells", RITUAL_SPELLS, True)); note = "Select no more than two spells."
         elif feat == "Skilled":
-            controls.append(feat_choice_dropdown(level, "skills", "Three skills", sorted(SKILL_TO_ABILITY), True)); note = "Select no more than three skills."
+            controls.append(feat_control(level, "skills", "Three skills", sorted(SKILL_TO_ABILITY), True)); note = "Select no more than three skills."
         elif feat == "Spell Sniper":
-            controls.append(feat_choice_dropdown(level, "cantrip", "Cantrip", SPELL_SNIPER_CANTRIPS))
+            controls.append(feat_control(level, "cantrip", "Cantrip", SPELL_SNIPER_CANTRIPS))
         if feat == "Actor":
             note += " Grants Deception and Performance proficiency and expertise automatically."
         if feat == "Resilient":
@@ -2221,24 +2245,38 @@ def render_feat_choices(feat_values):
     Output({"type": "class-choice-container", "level": ALL}, "children"),
     Input({"type": "level-class", "level": ALL}, "value"),
     Input({"type": "level-subclass", "level": ALL}, "value"),
+    Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
 )
-def render_class_feature_choices(class_values, subclass_values):
+def render_class_feature_choices(class_values, subclass_values, current_values, current_ids):
     counts = Counter()
     choices = []
     chosen_subclasses = {}
+    existing = {(item_id["level"], item_id["feature"]): value for value, item_id in zip(current_values or [], current_ids or [])}
+    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set()}
 
-    def choice_control(level, feature, label, values, multi=False, limit=None):
+    def choice_control(level, feature, label, values, multi=False, limit=None, unique=False):
+        current = existing.get((level, feature))
+        current_items = set(current if isinstance(current, list) else [current] if current else [])
+        if unique:
+            duplicates = current_items & used_unique[feature]
+            if duplicates:
+                current = [item for item in current if item not in duplicates] if isinstance(current, list) else None
+                current_items -= duplicates
+            values = [value for value in values if value not in used_unique[feature] or value in current_items]
         option_rows = []
         for value in values:
             style = next((row for row in FIGHTING_STYLES if row["fighting_style"] == value), None)
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == value.lower()), None)
-            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "")
+            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "")
             option_rows.append({"label": option_label(value, [description]), "value": value, "search": f"{value} {description}"})
+        if unique:
+            used_unique[feature].update(current_items)
         return html.Div([
             html.Label(label),
             dcc.Dropdown(
                 id={"type": "class-feature-choice", "level": level, "feature": feature}, options=option_rows,
-                placeholder=f"Choose {label.lower()}", multi=multi, className="rich-dropdown",
+                value=current, placeholder=f"Choose {label.lower()}", multi=multi, className="rich-dropdown",
                 optionHeight=105, maxHeight=390, persistence=True, persistence_type="session",
             ),
             html.P(f"Choose up to {limit}." if multi and limit else "", className="spell-card-note"),
@@ -2267,7 +2305,11 @@ def render_class_feature_choices(class_values, subclass_values):
             style_owner = "Champion Fighter"
         if style_owner:
             style_values = [row["fighting_style"] for row in FIGHTING_STYLES if style_owner in row["available_to"].split("; ")]
-            controls.append(choice_control(level, "Fighting Style", "Fighting Style", style_values))
+            controls.append(choice_control(level, "Fighting Style", "Fighting Style", style_values, unique=True))
+
+        if class_name == "Ranger" and class_level in {1, 6, 10}:
+            controls.append(choice_control(level, "Favoured Enemy", "Favoured Enemy", list(RANGER_FAVOURED_ENEMIES), unique=True))
+            controls.append(choice_control(level, "Natural Explorer", "Natural Explorer", list(RANGER_NATURAL_EXPLORERS), unique=True))
 
         if class_name == "Fighter" and subclass == "Battle Master" and class_level in {3, 7, 10}:
             limit = {3: 3, 7: 2, 10: 2}[class_level]
@@ -2402,6 +2444,8 @@ def render_sheet_leveling(class_values, subclass_values, feat_values, ability_da
     spell_names = {row["spell"].lower() for row in SPELLS}
     earned_features = [feature for feature in earned_features if feature.lower() not in spell_names]
     selected_class_choices = [item for value in class_choice_values or [] for item in (value if isinstance(value, list) else [value]) if item]
+    if "Ranger Knight" in selected_class_choices:
+        equipment.append("Ranger Knight: Heavy armour")
     if selected_class_choices:
         earned_features = [feature for feature in earned_features if feature != "Pact Boon"] + selected_class_choices
     if any(choice in {row["fighting_style"] for row in FIGHTING_STYLES} for choice in selected_class_choices):
@@ -2424,6 +2468,10 @@ def render_sheet_leveling(class_values, subclass_values, feat_values, ability_da
         selected_values = selected_by_class.get(class_name, [])
         if "Pact Boon" in values and any(choice in PACT_BOONS for choice in selected_values):
             values = [feature for feature in values if feature != "Pact Boon"]
+        if any(choice in RANGER_FAVOURED_ENEMIES for choice in selected_values):
+            values = [feature for feature in values if feature != "Favoured Enemy"]
+        if any(choice in RANGER_NATURAL_EXPLORERS for choice in selected_values):
+            values = [feature for feature in values if feature != "Natural Explorer"]
         if any(choice in style_names for choice in selected_values):
             values = [feature for feature in values if not feature.lower().startswith("fighting style")]
         values.extend(choice for choice in selected_values if choice not in combat_actions)
@@ -2730,8 +2778,10 @@ def render_saving_throws(ability_data, feat_effects, equipment_effects, race, su
     Input("feat-effects-store", "data"),
     Input("skill-state-store", "data"),
     Input("equipment-effects-store", "data"),
+    Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
 )
-def render_skills(ability_data, background, race, subrace, human_skill, level_classes, feat_effects, skill_state, equipment_effects):
+def render_skills(ability_data, background, race, subrace, human_skill, level_classes, feat_effects, skill_state, equipment_effects, class_choice_values, class_choice_ids):
     ability_data = ability_data or {}
     skill_state = skill_state or {}
     feat_effects = feat_effects or {}
@@ -2761,6 +2811,16 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
         proficient.add(human_skill)
     proficient |= set(feat_effects.get("skills", []))
     proficient |= expertise
+    ranger_skill_grants = {
+        "Bounty Hunter": "Investigation", "Keeper of the Veil": "Arcana", "Mage Breaker": "Arcana",
+        "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
+    }
+    for value, item_id in zip(class_choice_values or [], class_choice_ids or []):
+        if item_id.get("feature") not in {"Favoured Enemy", "Natural Explorer"}:
+            continue
+        for choice in (value if isinstance(value, list) else [value]):
+            if choice in ranger_skill_grants:
+                proficient.add(ranger_skill_grants[choice])
 
     rows = []
     for skill in sorted(SKILL_TO_ABILITY):
@@ -2860,8 +2920,16 @@ def class_granted_spells(level_classes, level_subclasses, class_choice_values):
         class_name: [canonical_spells[feature.lower()] for feature in features if feature.lower() in canonical_spells]
         for class_name, features in progression.items()
     }
-    if "Pact of the Tome" in (class_choice_values or []):
+    selected_choices = [item for value in class_choice_values or [] for item in (value if isinstance(value, list) else [value]) if item]
+    if "Pact of the Tome" in selected_choices:
         granted.setdefault("Warlock", []).extend(["Guidance", "Vicious Mockery", "Thorn Whip"])
+    ranger_grants = {
+        "Keeper of the Veil": "Protection from Evil and Good", "Mage Breaker": "True Strike",
+        "Sanctified Stalker": "Sacred Flame", "Beast Tamer": "Find Familiar",
+    }
+    for choice, spell in ranger_grants.items():
+        if choice in selected_choices:
+            granted.setdefault("Ranger", []).append(spell)
     return {class_name: list(dict.fromkeys(spells)) for class_name, spells in granted.items() if spells}
 
 
@@ -4815,6 +4883,7 @@ def render_sheet_equipment(*values):
     Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
     Input({"type": "level-class", "level": ALL}, "value"), Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "level-feat", "level": ALL}, "value"),
+    Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
     Input("equipment-melee-main", "value"), Input("equipment-melee-off", "value"),
     Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
     Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
@@ -4822,7 +4891,7 @@ def render_sheet_equipment(*values):
     Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
 )
-def render_sheet_defences(race, subrace, class_values, subclass_values, feat_values, *item_ids):
+def render_sheet_defences(race, subrace, class_values, subclass_values, feat_values, class_choice_values, *item_ids):
     combined = {"resistances": [], "immunities": [], "vulnerabilities": []}
 
     def merge(effects):
@@ -4851,6 +4920,11 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
         if feat_row:
             merge(defensive_effects(feat_row["description"], f"Feat — {feat}"))
 
+    for value in class_choice_values or []:
+        for choice in (value if isinstance(value, list) else [value]):
+            if choice in RANGER_NATURAL_EXPLORERS:
+                merge(defensive_effects(RANGER_NATURAL_EXPLORERS[choice], f"Ranger - {choice}"))
+
     slot_names = ["Melee main hand", "Melee off hand", "Ranged main hand", "Ranged off hand", "Headwear", "Armour", "Handwear", "Footwear", "Cape", "Necklace", "Ring 1", "Ring 2"]
     for slot, item_id in zip(slot_names, item_ids):
         row = EQUIPMENT_BY_ID.get(item_id)
@@ -4874,10 +4948,11 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
     Input("background-dropdown", "value"),
     Input("human-versatility-skill", "value"),
     Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
     Input("feat-effects-store", "data"),
     State("character-store", "data"),
 )
-def update_summary(name, race, subrace, background, human_skill, level_classes, feat_effects, _stored):
+def update_summary(name, race, subrace, background, human_skill, level_classes, class_choice_values, feat_effects, _stored):
     race_row = next((row for row in RACES if row["race"] == race), None)
     subrace_row = next(
         (row for row in RACES if row["race"] == race and row["subrace"] == subrace),
@@ -4911,6 +4986,14 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
     feat_proficiencies += [f"Skill: {skill}" for skill in feat_effects.get("skills", [])]
     feat_proficiencies += [f"Expertise: {skill}" for skill in feat_effects.get("expertise", [])]
     feat_proficiencies += [f"{ability} saving throws" for ability in feat_effects.get("saving_throws", [])]
+    ranger_choice_proficiencies = {
+        "Bounty Hunter": "Investigation", "Keeper of the Veil": "Arcana", "Mage Breaker": "Arcana",
+        "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
+    }
+    selected_class_choices = [item for value in class_choice_values or [] for item in (value if isinstance(value, list) else [value]) if item]
+    feat_proficiencies += [ranger_choice_proficiencies[choice] for choice in selected_class_choices if choice in ranger_choice_proficiencies]
+    if "Ranger Knight" in selected_class_choices:
+        feat_proficiencies.append("Heavy armour")
     merged_proficiencies = collapse_weapon_proficiencies(proficiency_items(
         race_row["race_proficiencies"] if race_row else "",
         subrace_row["subrace_proficiencies"] if subrace_row else "",
