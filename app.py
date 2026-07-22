@@ -688,7 +688,11 @@ def class_feature_tooltips(features, inline_descriptions=None):
             row = next((item for item in CLASS_FEATURES if item["feature"].lower().split(" (")[0] == feature.lower().split(" (")[0]), None)
         wiki_description = row["description"] if row else ""
         inline_description = inline_descriptions.get(feature, "")
-        description = CLASS_FEATURE_OVERRIDES.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
+        expertise_description = ""
+        if feature.startswith("Expertise: "):
+            expertise_skill = feature.split(":", 1)[1].strip()
+            expertise_description = f"Double your proficiency bonus on {expertise_skill} checks."
+        description = expertise_description or CLASS_FEATURE_OVERRIDES.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
         if rendered:
             rendered.append(", ")
         rendered.append(html.Span(feature, className="sheet-tooltip-term", tabIndex=0, **{"data-tooltip": description[:900]}))
@@ -2253,7 +2257,7 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
     choices = []
     chosen_subclasses = {}
     existing = {(item_id["level"], item_id["feature"]): value for value, item_id in zip(current_values or [], current_ids or [])}
-    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set()}
+    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(), "Expertise": set()}
 
     def choice_control(level, feature, label, values, multi=False, limit=None, unique=False):
         current = existing.get((level, feature))
@@ -2268,7 +2272,7 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         for value in values:
             style = next((row for row in FIGHTING_STYLES if row["fighting_style"] == value), None)
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == value.lower()), None)
-            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "")
+            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
             tooltip = f"{value} | {description}" if description else value
             option_rows.append({"label": option_label(value, [description], tooltip=tooltip), "value": value, "search": f"{value} {description}"})
         if unique:
@@ -2311,6 +2315,13 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         if class_name == "Ranger" and class_level in {1, 6, 10}:
             controls.append(choice_control(level, "Favoured Enemy", "Favoured Enemy", list(RANGER_FAVOURED_ENEMIES), unique=True))
             controls.append(choice_control(level, "Natural Explorer", "Natural Explorer", list(RANGER_NATURAL_EXPLORERS), unique=True))
+
+        if ((class_name == "Rogue" and class_level in {1, 6})
+                or (class_name == "Bard" and class_level in {3, 10})):
+            controls.append(choice_control(
+                level, "Expertise", "Expertise skills (2)", sorted(SKILL_TO_ABILITY),
+                multi=True, limit=2, unique=True,
+            ))
 
         if class_name == "Fighter" and subclass == "Battle Master" and class_level in {3, 7, 10}:
             limit = {3: 3, 7: 2, 10: 2}[class_level]
@@ -2463,8 +2474,10 @@ def render_sheet_leveling(class_values, subclass_values, feat_values, ability_da
         source_class = class_values[level_index] if 0 <= level_index < len(class_values or []) else None
         if source_class and value:
             chosen = value if isinstance(value, list) else [value]
-            selected_by_class.setdefault(source_class, []).extend(chosen)
-            selected_categories_by_class.setdefault(source_class, {}).setdefault(item_id.get("feature", ""), []).extend(chosen)
+            category = item_id.get("feature", "")
+            displayed = [f"Expertise: {choice}" for choice in chosen] if category == "Expertise" else chosen
+            selected_by_class.setdefault(source_class, []).extend(displayed)
+            selected_categories_by_class.setdefault(source_class, {}).setdefault(category, []).extend(chosen)
     feature_groups = []
     for class_name, class_features in features_by_class.items():
         values = [feature for feature in class_features if feature.lower() not in spell_names and feature not in combat_actions]
@@ -2821,6 +2834,9 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
         "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
     }
     for value, item_id in zip(class_choice_values or [], class_choice_ids or []):
+        if item_id.get("feature") == "Expertise":
+            expertise.update((value if isinstance(value, list) else [value])[:2])
+            continue
         if item_id.get("feature") not in {"Favoured Enemy", "Natural Explorer"}:
             continue
         for choice in (value if isinstance(value, list) else [value]):
@@ -5004,6 +5020,13 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
     }
     selected_class_choices = [item for value in class_choice_values or [] for item in (value if isinstance(value, list) else [value]) if item]
     feat_proficiencies += [ranger_choice_proficiencies[choice] for choice in selected_class_choices if choice in ranger_choice_proficiencies]
+    feat_proficiencies += [
+        f"Expertise: {choice}"
+        for value, item_id in zip(class_choice_values or [], class_choice_ids or [])
+        if item_id.get("feature") == "Expertise"
+        for choice in (value if isinstance(value, list) else [value])[:2]
+        if choice
+    ]
     if "Ranger Knight" in selected_class_choices:
         feat_proficiencies.append("Heavy armour")
     merged_proficiencies = collapse_weapon_proficiencies(proficiency_items(
