@@ -236,6 +236,14 @@ body {
 .sheet-ability-name { color: #7e2629; font-size: 0.6rem; font-weight: 900; letter-spacing: 0.1em; }
 .sheet-ability-score { margin: 2px 0; font-family: Georgia, serif; font-size: 1.65rem; line-height: 1; }
 .sheet-ability-modifier { display: grid; place-items: center; width: 30px; height: 22px; margin-bottom: -20px; background: #f1e2bd; border: 1px solid #6c4928; border-radius: 50%; font-family: Georgia, serif; font-size: 0.8rem; font-weight: 700; }
+.sheet-saving-throws-panel { position: relative; margin-bottom: 28px; padding-top: 0; }
+.sheet-saving-throws-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; }
+.saving-throw-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) 32px 30px; gap: 5px; align-items: center; min-height: 31px; padding: 0 4px; border-bottom: 1px solid rgba(91, 59, 29, 0.16); cursor: help; }
+.saving-throw-marker { color: #85725e; font-size: 0.72rem; text-align: center; }
+.saving-throw-marker--proficient { color: #7e2629; }
+.saving-throw-name { overflow: hidden; font-size: 0.72rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.saving-throw-total { font-family: Georgia, serif; font-size: 0.92rem; text-align: right; }
+.saving-throw-note { color: #8b5a20; font-size: 0.5rem; font-weight: 900; letter-spacing: 0.04em; text-align: right; }
 .sheet-skills-panel { position: relative; margin-bottom: 28px; padding-top: 0; }
 .sheet-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 -15px 8px; padding: 8px 12px; color: #f5e9c7; background: #4a3222; }
 .sheet-panel-heading h3 { margin: 0; padding: 0; background: transparent; font-size: 0.92rem; }
@@ -553,6 +561,7 @@ body {
   .abilities-card { overflow-x: auto; padding-inline: 16px; }
   .ability-table-head, .ability-row { min-width: 340px; }
   .sheet-ability-grid { grid-template-columns: repeat(3, 1fr); row-gap: 24px; }
+  .sheet-saving-throws-grid { grid-template-columns: 1fr; }
   .sheet-vitals-grid { grid-template-columns: 1fr; }
   .sheet-defences-grid { grid-template-columns: 1fr; }
   .sheet-class-feature-group { grid-template-columns: 1fr; gap: 6px; }

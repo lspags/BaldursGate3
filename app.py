@@ -1413,6 +1413,16 @@ app.layout = html.Div(
                         ),
                         html.Section(
                             [
+                                html.Div([
+                                    html.H3("Saving Throws"),
+                                    html.Span("Ability + proficiency + bonuses", className="sheet-section-note"),
+                                ], className="sheet-panel-heading"),
+                                html.Div(id="sheet-saving-throws", className="sheet-saving-throws-grid"),
+                            ],
+                            className="sheet-panel sheet-saving-throws-panel",
+                        ),
+                        html.Section(
+                            [
                                 html.Div(
                                     [
                                         html.H3("Skills"),
@@ -2567,6 +2577,145 @@ def render_abilities(data, feat_effects, equipment_effects):
 
     points_class = "points-value points-value--empty" if remaining == 0 else "points-value"
     return score_values, button_disabled, bonus_classes, str(remaining), points_class, sheet_scores
+
+
+@callback(
+    Output("sheet-saving-throws", "children"),
+    Input("abilities-store", "data"), Input("feat-effects-store", "data"),
+    Input("equipment-effects-store", "data"),
+    Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
+    Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "level-subclass", "level": ALL}, "value"),
+    Input({"type": "level-feat", "level": ALL}, "value"),
+    Input("equipment-melee-main", "value"), Input("equipment-melee-off", "value"),
+    Input("equipment-ranged-main", "value"), Input("equipment-ranged-off", "value"),
+    Input("equipment-headwear", "value"), Input("equipment-armour", "value"),
+    Input("equipment-handwear", "value"), Input("equipment-footwear", "value"),
+    Input("equipment-cape", "value"), Input("equipment-necklace", "value"),
+    Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
+)
+def render_saving_throws(ability_data, feat_effects, equipment_effects, race, subrace,
+                         class_values, subclass_values, feat_values, *equipment_ids):
+    active_classes = []
+    for class_name in class_values or []:
+        if not class_name:
+            break
+        active_classes.append(class_name)
+    level = max(1, len(active_classes))
+    proficiency = proficiency_bonus(level)
+    scores = final_ability_scores(ability_data or {}, feat_effects or {}, equipment_effects)
+    proficient = set((feat_effects or {}).get("saving_throws", []))
+    if active_classes:
+        first_class = next((row for row in CLASSES if row["class"] == active_classes[0]), None)
+        if first_class:
+            proficient.update(part.strip() for part in first_class.get("saving_throw_proficiencies", "").split(",") if part.strip() in ABILITIES)
+
+    features = {feature for values in progression_features_by_class(class_values, subclass_values).values() for feature in values}
+    if "Iron Mind" in features:
+        proficient.update({"Wisdom", "Intelligence"})
+
+    bonuses = Counter()
+    sources = {ability: [] for ability in ABILITIES}
+    notes = {ability: [] for ability in ABILITIES}
+    equipped = [EQUIPMENT_BY_ID.get(item_id) for item_id in equipment_ids if item_id]
+    equipped = [row for row in equipped if row]
+
+    for row in equipped:
+        special = row.get("special", "")
+        proficiency_match = re.findall(r"Proficiency in (Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) Saving Throws", special, re.IGNORECASE)
+        for ability_name in proficiency_match:
+            ability = next(name for name in ABILITIES if name.lower() == ability_name.lower())
+            proficient.add(ability)
+            sources[ability].append(f"{row['item']}: proficiency")
+        for clause in re.split(r"[.;]", special):
+            if "saving throw" not in clause.lower() or "proficiency" in clause.lower():
+                continue
+            if "death saving throw" in clause.lower():
+                continue
+            mentioned = [ability for ability in ABILITIES if re.search(rf"\b{ability}\b", clause, re.IGNORECASE)]
+            conditional = any(term in clause.lower() for term in (
+                "advantage", "against", " as long", " while ", " if ", " when ", " until ",
+                "after ", "next ", "they gain", "target", "concentrating", "lightning charges",
+            ))
+            number_match = re.search(r"([+-]\d+)\s*(?:bonus\s+)?(?:to\s+)?(?:your\s+)?(?:all\s+)?(?:\w+[, ]*){0,4}saving throws?", clause, re.IGNORECASE)
+            if not number_match:
+                number_match = re.search(r"saving throws?\s*([+-]\d+)", clause, re.IGNORECASE)
+            targets = mentioned or ABILITIES
+            if number_match and not conditional:
+                amount = int(number_match.group(1))
+                for ability in targets:
+                    bonuses[ability] += amount
+                    sources[ability].append(f"{row['item']} {amount:+d}")
+            elif conditional or "advantage" in clause.lower():
+                summary = re.sub(r"\s+", " ", clause).strip()
+                for ability in targets:
+                    notes[ability].append(f"{row['item']}: {summary}")
+
+    charisma_aura = ability_modifier(scores["Charisma"]) if "Aura of Protection" in features else 0
+    if "Aura of Protection" in features:
+        for ability in ABILITIES:
+            bonuses[ability] += charisma_aura
+            sources[ability].append(f"Aura of Protection {charisma_aura:+d}")
+
+    shield_equipped = any(row["category"] == "shield" for row in equipped)
+    if "Shield Master" in (feat_values or []) and shield_equipped:
+        bonuses["Dexterity"] += 2
+        sources["Dexterity"].append("Shield Master +2")
+
+    feat_notes = {
+        "Dungeon Delver": "Advantage against traps",
+        "Lucky": "Luck Points can grant Advantage",
+        "Mage Slayer": "Advantage against spells cast within melee range",
+        "War Caster": "Advantage on Concentration saving throws",
+    }
+    for feat, description in feat_notes.items():
+        if feat in (feat_values or []):
+            for ability in ABILITIES:
+                notes[ability].append(f"{feat}: {description}")
+    if "Danger Sense" in features:
+        notes["Dexterity"].append("Danger Sense: Advantage against traps, spells, and surfaces while able to react")
+    if "Rage" in features:
+        notes["Strength"].append("Rage: Advantage while raging")
+    if "Indomitable" in features:
+        for ability in ABILITIES:
+            notes[ability].append("Indomitable: reroll a failed saving throw")
+
+    race_rows = [row for row in RACES if row["race"] == race and (not subrace or row.get("subrace") == subrace)]
+    racial_text = " ".join(f"{row.get('race_features', '')} {row.get('subrace_features', '')}" for row in race_rows)
+    if "Gnome Cunning" in racial_text:
+        for ability in ("Intelligence", "Wisdom", "Charisma"):
+            notes[ability].append("Gnome Cunning: Advantage")
+    for trait, description in (
+        ("Duergar Resilience", "Advantage against illusions, Charmed, or Paralysed"),
+        ("Dwarven Resilience", "Advantage against Poisoned"),
+        ("Strongheart Resilience", "Advantage against Poisoned"),
+        ("Fey Ancestry", "Advantage against Charmed"),
+        ("Brave", "Advantage against Frightened"),
+        ("Halfling Luck", "Reroll a natural 1"),
+    ):
+        if trait in racial_text:
+            for ability in ABILITIES:
+                notes[ability].append(f"{trait}: {description}")
+
+    rows = []
+    for ability in ABILITIES:
+        ability_value = ability_modifier(scores[ability])
+        proficiency_value = proficiency if ability in proficient else 0
+        total = ability_value + proficiency_value + bonuses[ability]
+        calculation = [f"{ability} modifier {ability_value:+d}"]
+        if proficiency_value:
+            calculation.append(f"proficiency {proficiency_value:+d}")
+        calculation.extend(sources[ability])
+        tooltip = " + ".join(calculation) + f" = {total:+d}"
+        if notes[ability]:
+            tooltip += " | Conditional: " + "; ".join(dict.fromkeys(notes[ability]))
+        rows.append(html.Div([
+            html.Span("●" if ability in proficient else "○", className=f"saving-throw-marker{' saving-throw-marker--proficient' if ability in proficient else ''}"),
+            html.Span(ability, className="saving-throw-name"),
+            html.Strong(f"{total:+d}", className="saving-throw-total"),
+            html.Span("COND" if notes[ability] else "", className="saving-throw-note"),
+        ], className="saving-throw-row", title=tooltip))
+    return rows
 
 
 @callback(
