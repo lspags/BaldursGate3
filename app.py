@@ -5283,6 +5283,15 @@ def update_equipment_options(equipment_act, filter_values, race, subrace, classe
     valid_ranged_off = {row["equipment_id"] for row in ranged_off_rows}
     ranged_off_value = ranged_off_id if ranged_off_id in valid_ranged_off else None
 
+    # An act-tab change and the loadout restoration it triggers are separate Dash
+    # callbacks.  At this point the main-hand inputs can still belong to the old
+    # act, so validating an off hand against them would erase the destination
+    # act's saved weapon.  The restored main hand triggers this callback again,
+    # at which point both hands belong to the same act and can be safely checked.
+    if ctx.triggered_id == "equipment-act-tab":
+        melee_off_value = no_update
+        ranged_off_value = no_update
+
     options = lambda rows: [equipment_option(row) for row in rows]
     return (
         options(by_category("melee")), melee_off_options, melee_off_disabled, melee_off_value,
