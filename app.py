@@ -692,7 +692,15 @@ def class_feature_tooltips(features, inline_descriptions=None):
         if feature.startswith("Expertise: "):
             expertise_skill = feature.split(":", 1)[1].strip()
             expertise_description = f"Double your proficiency bonus on {expertise_skill} checks."
-        description = expertise_description or CLASS_FEATURE_OVERRIDES.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
+        proficiency_description = ""
+        if feature.startswith("Skill Proficiency: "):
+            proficiency_skill = feature.split(":", 1)[1].strip()
+            proficiency_description = f"Add your proficiency bonus to {proficiency_skill} checks."
+        knowledge_description = ""
+        if feature.startswith(("Knowledge of the Ages: ", "Astral Knowledge: ")):
+            knowledge_ability = feature.split(":", 1)[1].strip()
+            knowledge_description = f"Gain proficiency in every skill governed by {knowledge_ability}."
+        description = expertise_description or proficiency_description or knowledge_description or CLASS_FEATURE_OVERRIDES.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
         if rendered:
             rendered.append(", ")
         rendered.append(html.Span(feature, className="sheet-tooltip-term", tabIndex=0, **{"data-tooltip": description[:900]}))
@@ -2250,17 +2258,53 @@ def render_feat_choices(feat_values, current_values, current_ids):
     Input({"type": "level-class", "level": ALL}, "value"),
     Input({"type": "level-subclass", "level": ALL}, "value"),
     Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    Input("background-dropdown", "value"), Input("race-dropdown", "value"),
+    Input("subrace-dropdown", "value"), Input("human-versatility-skill", "value"),
+    Input("feat-effects-store", "data"), Input("skill-state-store", "data"),
     State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
 )
-def render_class_feature_choices(class_values, subclass_values, current_values, current_ids):
+def render_class_feature_choices(class_values, subclass_values, current_values, background, race, subrace,
+                                 human_skill, feat_effects, skill_state, current_ids):
     counts = Counter()
     choices = []
     chosen_subclasses = {}
     existing = {(item_id["level"], item_id["feature"]): value for value, item_id in zip(current_values or [], current_ids or [])}
-    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(), "Expertise": set()}
+    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(), "Expertise": set(), "Skill Proficiencies": set()}
 
-    def choice_control(level, feature, label, values, multi=False, limit=None, unique=False):
+    background_row = next((row for row in BACKGROUNDS if row["background"] == background), None)
+    race_row = next((row for row in RACES if row["race"] == race), None)
+    subrace_row = next((row for row in RACES if row["race"] == race and row["subrace"] == subrace), None)
+    proficient_skills = skills_mentioned(
+        background_row["skill_proficiencies"] if background_row else "",
+        race_row["race_proficiencies"] if race_row else "",
+        subrace_row["subrace_proficiencies"] if subrace_row else "",
+    )
+    if race == "Human" and human_skill:
+        proficient_skills.add(human_skill)
+    proficient_skills.update((feat_effects or {}).get("skills", []))
+    proficient_skills.update((feat_effects or {}).get("expertise", []))
+    proficient_skills.update((skill_state or {}).get("proficiencies", []))
+    used_unique["Skill Proficiencies"].update(proficient_skills)
+    ranger_skill_grants = {
+        "Bounty Hunter": "Investigation", "Keeper of the Veil": "Arcana", "Mage Breaker": "Arcana",
+        "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
+    }
+    for (choice_level, feature), value in existing.items():
+        chosen = value if isinstance(value, list) else [value]
+        if feature == "Skill Proficiencies":
+            proficient_skills.update(skill for skill in chosen if skill in SKILL_TO_ABILITY)
+        elif feature in {"Favoured Enemy", "Natural Explorer"}:
+            proficient_skills.update(ranger_skill_grants[choice] for choice in chosen if choice in ranger_skill_grants)
+        elif feature == "Knowledge of the Ages":
+            proficient_skills.update(skill for skill, ability in SKILL_TO_ABILITY.items() if ability in chosen)
+        elif feature == "Astral Knowledge":
+            proficient_skills.update(skill for skill, ability in SKILL_TO_ABILITY.items() if ability in chosen)
+
+    def choice_control(level, feature, label, values, multi=False, limit=None, unique=False, valid_only=False):
         current = existing.get((level, feature))
+        if valid_only:
+            allowed = set(values)
+            current = [item for item in (current or []) if item in allowed][:limit] if multi else current if current in allowed else None
         current_items = set(current if isinstance(current, list) else [current] if current else [])
         if unique:
             duplicates = current_items & used_unique[feature]
@@ -2299,6 +2343,22 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         subclass = chosen_subclasses.get(class_name)
         controls = []
 
+        if level == 1 and race == "Githyanki":
+            controls.append(choice_control(
+                level, "Astral Knowledge", "Astral Knowledge ability", ABILITIES,
+            ))
+
+        if counts[class_name] == 1:
+            class_row = next(row for row in CLASSES if row["class"] == class_name)
+            multiclass_skill_choices = {"Bard": 1, "Cleric": 2, "Ranger": 1, "Rogue": 1}
+            skill_limit = int(class_row.get("skill_proficiency_choices") or 0) if level == 1 else multiclass_skill_choices.get(class_name, 0)
+            skill_options = [skill for skill in SKILL_TO_ABILITY if skill in class_row.get("skill_proficiencies", "")]
+            if skill_limit and skill_options:
+                controls.append(choice_control(
+                    level, "Skill Proficiencies", f"Skill Proficiencies ({skill_limit})",
+                    sorted(skill_options), multi=True, limit=skill_limit, unique=True, valid_only=True,
+                ))
+
         style_owner = None
         if class_name == "Fighter" and class_level == 1:
             style_owner = "Fighter"
@@ -2319,8 +2379,17 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         if ((class_name == "Rogue" and class_level in {1, 6})
                 or (class_name == "Bard" and class_level in {3, 10})):
             controls.append(choice_control(
-                level, "Expertise", "Expertise skills (2)", sorted(SKILL_TO_ABILITY),
-                multi=True, limit=2, unique=True,
+                level, "Expertise", "Expertise skills (2)", sorted(proficient_skills),
+                multi=True, limit=2, unique=True, valid_only=True,
+            ))
+        if class_name == "Bard" and class_level == 3 and subclass == "College of Lore":
+            controls.append(choice_control(
+                level, "Skill Proficiencies", "College of Lore Skills (3)", sorted(SKILL_TO_ABILITY),
+                multi=True, limit=3, unique=True, valid_only=True,
+            ))
+        if class_name == "Cleric" and class_level == 2 and subclass == "Knowledge Domain":
+            controls.append(choice_control(
+                level, "Knowledge of the Ages", "Knowledge of the Ages ability", ABILITIES,
             ))
 
         if class_name == "Fighter" and subclass == "Battle Master" and class_level in {3, 7, 10}:
@@ -2475,7 +2544,14 @@ def render_sheet_leveling(class_values, subclass_values, feat_values, ability_da
         if source_class and value:
             chosen = value if isinstance(value, list) else [value]
             category = item_id.get("feature", "")
-            displayed = [f"Expertise: {choice}" for choice in chosen] if category == "Expertise" else chosen
+            if category == "Expertise":
+                displayed = [f"Expertise: {choice}" for choice in chosen]
+            elif category == "Skill Proficiencies":
+                displayed = [f"Skill Proficiency: {choice}" for choice in chosen]
+            elif category in {"Knowledge of the Ages", "Astral Knowledge"}:
+                displayed = [f"{category}: {choice}" for choice in chosen]
+            else:
+                displayed = chosen
             selected_by_class.setdefault(source_class, []).extend(displayed)
             selected_categories_by_class.setdefault(source_class, {}).setdefault(category, []).extend(chosen)
     feature_groups = []
@@ -2826,6 +2902,8 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
     level = max(1, min(12, selected_levels or int(skill_state.get("level", 1))))
     proficiency = proficiency_bonus(level)
     expertise = set(skill_state.get("expertise", [])) | set(feat_effects.get("expertise", []))
+    if race == "Gnome" and subrace == "Rock Gnome":
+        expertise.add("History")
     item_bonuses = skill_state.get("item_bonuses", {}) or {}
 
     background_row = next((row for row in BACKGROUNDS if row["background"] == background), None)
@@ -2848,8 +2926,15 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
         "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
     }
     for value, item_id in zip(class_choice_values or [], class_choice_ids or []):
+        if item_id.get("feature") == "Skill Proficiencies":
+            proficient.update(value if isinstance(value, list) else [value])
+            continue
         if item_id.get("feature") == "Expertise":
             expertise.update((value if isinstance(value, list) else [value])[:2])
+            continue
+        if item_id.get("feature") in {"Knowledge of the Ages", "Astral Knowledge"}:
+            for ability in (value if isinstance(value, list) else [value]):
+                proficient.update(skill for skill, skill_ability in SKILL_TO_ABILITY.items() if skill_ability == ability)
             continue
         if item_id.get("feature") not in {"Favoured Enemy", "Natural Explorer"}:
             continue
@@ -2861,11 +2946,14 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
     for skill in sorted(SKILL_TO_ABILITY):
         ability = SKILL_TO_ABILITY[skill]
         base_modifier = ability_modifier(final_scores[ability])
+        jack_of_all_trades = (level_classes or []).count("Bard") >= 2
         proficiency_value = proficiency * (2 if skill in expertise else 1 if skill in proficient else 0)
+        if not proficiency_value and jack_of_all_trades:
+            proficiency_value = proficiency // 2
         item_value = int(item_bonuses.get(skill, 0) or 0)
         total = base_modifier + proficiency_value + item_value
-        marker = "◆" if skill in expertise else "●" if skill in proficient else "○"
-        status = "expertise" if skill in expertise else "proficient" if skill in proficient else "untrained"
+        marker = "◆" if skill in expertise else "●" if skill in proficient else "◐" if jack_of_all_trades else "○"
+        status = "expertise" if skill in expertise else "proficient" if skill in proficient else "half-proficient" if jack_of_all_trades else "untrained"
         calculation = f"{ability} {base_modifier:+d} + proficiency {proficiency_value:+d} + items {item_value:+d}"
         rows.append(
             html.Div(
@@ -5088,6 +5176,21 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
         if item_id.get("feature") == "Expertise"
         for choice in (value if isinstance(value, list) else [value])[:2]
         if choice
+    ]
+    feat_proficiencies += [
+        choice
+        for value, item_id in zip(class_choice_values or [], class_choice_ids or [])
+        if item_id.get("feature") == "Skill Proficiencies"
+        for choice in (value if isinstance(value, list) else [value])
+        if choice
+    ]
+    feat_proficiencies += [
+        skill
+        for value, item_id in zip(class_choice_values or [], class_choice_ids or [])
+        if item_id.get("feature") in {"Knowledge of the Ages", "Astral Knowledge"}
+        for ability in (value if isinstance(value, list) else [value])
+        for skill, skill_ability in SKILL_TO_ABILITY.items()
+        if skill_ability == ability
     ]
     if "Ranger Knight" in selected_class_choices:
         feat_proficiencies.append("Heavy armour")
