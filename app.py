@@ -265,6 +265,45 @@ SKILL_TO_ABILITY = {
     for skill in row["skills"].split("; ")
     if skill and skill != "None"
 }
+PERMANENT_BOONS = [
+    {"value": "awakened", "name": "Awakened", "act": 1, "description": "Use all illithid powers as Bonus Actions."},
+    {"value": "boooals-benediction", "name": "BOOOAL's Benediction", "act": 1, "description": "Gain Advantage on attack rolls against Bleeding targets."},
+    {"value": "brand-of-the-absolute", "name": "Brand of the Absolute", "act": 1, "description": "Unlock benefits from Absolute equipment and unique dialogue."},
+    {"value": "find-familiar-scratch", "name": "Find Familiar: Scratch", "act": 1, "description": "Gain the ability to summon Scratch as a familiar outside camp."},
+    {"value": "find-familiar-cheeky-quasit", "name": "Find Familiar: Cheeky Quasit", "act": 1, "description": "Gain the ability to summon Shovel, the Cheeky Quasit."},
+    {"value": "instrument-proficiency", "name": "Instrument Proficiency", "act": 1, "description": "Become proficient with musical instruments."},
+    {"value": "loviators-love", "name": "Loviatar's Love", "act": 1, "description": "At 30% Hit Points or less, gain +2 to attack rolls and Wisdom saving throws."},
+    {"value": "forbidden-knowledge", "name": "Necromancy of Thay: Forbidden Knowledge", "act": 1, "description": "Gain +1 to Wisdom saving throws and Wisdom ability checks, plus Speak with Dead once per Long Rest."},
+    {"value": "paid-the-price", "name": "Paid the Price", "act": 1, "description": "Gain +1 Intimidation, Disadvantage on Perception, and Disadvantage when attacking Hags. Mutually exclusive with Volo's Ersatz Eye."},
+    {"value": "survival-instinct", "name": "Survival Instinct", "act": 1, "description": "Gain the unique Survival Instinct illithid power."},
+    {"value": "volos-ersatz-eye", "name": "Volo's Ersatz Eye", "act": 1, "description": "Gain permanent See Invisibility. Mutually exclusive with Paid the Price."},
+    {"value": "arabellas-shadow-entangle", "name": "Arabella's Shadow Entangle", "act": 2, "description": "Gain the ability to entangle an Undead or Shadow creature."},
+    {"value": "improved-bardic-inspiration", "name": "Improved Bardic Inspiration", "act": 2, "description": "Gain one separate d12 Bardic Inspiration use per Long Rest."},
+    {"value": "githzerai-mind-barrier", "name": "Githzerai Mind Barrier", "act": 2, "description": "Gain Advantage on Intelligence saving throws."},
+    {"value": "consumed-shadow-weave", "name": "Consumed Shadow Weave", "act": 2, "description": "Gale gains a separate Level 3 Shadow Spell Slot per Long Rest."},
+    {"value": "potion-everlasting-vigour", "name": "Potion of Everlasting Vigour", "act": 2, "description": "Gain +2 Strength, including above 20."},
+    {"value": "slayer-form", "name": "Slayer Form", "act": 2, "description": "Gain the ability to transform into the Slayer once per Long Rest."},
+    {"value": "summon-us", "name": "Summon Us", "act": 2, "description": "Gain the ability to summon Us as a familiar."},
+    {"value": "anointed-in-splendour", "name": "Anointed in Splendour", "act": 3, "description": "Gain +2 to all saving throws."},
+    {"value": "partial-ceremorphosis", "name": "Partial Ceremorphosis", "act": 3, "description": "Unlock tier-three illithid powers, all tier-one powers, and Fly."},
+    {"value": "danse-macabre", "name": "Danse Macabre", "act": 3, "description": "Gain the ability to summon four ghouls. Its Constitution curse can be removed while retaining the spell."},
+    {"value": "monks-hideous-laughter", "name": "Monk's Hideous Laughter", "act": 3, "description": "Cast Tasha's Hideous Laughter once per Long Rest."},
+    {"value": "patriars-memory", "name": "Mirror of Loss: Patriar's Memory", "act": 3, "description": "Gain +1 Charisma from the Mirror of Loss."},
+    {"value": "slayer-knowledge", "name": "Slayer Knowledge", "act": 3, "description": "Gain Advantage against Slayer abilities and, for the Dark Urge Slayer, Piercing Growl."},
+    {"value": "sweet-stone-features", "name": "Sweet Stone Features", "act": 3, "description": "Gain +1d4 to attack rolls and saving throws after a Long Rest."},
+    {"value": "tharchiate-codex-blessing", "name": "The Tharchiate Codex: Blessing", "act": 3, "description": "Gain 20 temporary Hit Points after each Long Rest."},
+    {"value": "unstable-blood", "name": "Unstable Blood", "act": 3, "description": "Blood surfaces created by the character explode on contact with fire."},
+    {"value": "vampire", "name": "Vampire", "act": 3, "description": "Gain Bite (Vampire Spawn) and access to Circle of Bones."},
+    {"value": "vampire-ascendant", "name": "Vampire Ascendant", "act": 3, "description": "Gain Ascendant Bite, Misty Escape, and +1d10 Necrotic damage to weapon and unarmed attacks."},
+]
+PERMANENT_BOONS += [
+    {"value": f"ethel-hair:{ability}", "name": f"Auntie Ethel's Hair: {ability}", "act": 1, "description": f"Gain +1 {ability}, including above 20."}
+    for ability in ABILITIES
+]
+PERMANENT_BOONS += [
+    {"value": f"mirror-loss:{ability}", "name": f"Mirror of Loss: {ability}", "act": 3, "description": f"Gain +2 {ability}, up to 24."}
+    for ability in ABILITIES
+]
 
 
 def snake_case(value: str) -> str:
@@ -1491,6 +1530,29 @@ app.layout = html.Div(
                                 ),
                                 html.P("Select equipment above to build your checklist.", id="item-location-empty", className="item-location-empty"),
                             ], className="equipment-card item-location-card"),
+                            html.Section([
+                                html.H3("Permanent boons"),
+                                html.P("Add permanent bonuses earned through quests, choices, and other events.", className="item-location-intro"),
+                                dcc.Dropdown(
+                                    id="permanent-boons",
+                                    options=[
+                                        {
+                                            "label": option_label(row["name"], [f"Act {row['act']}", row["description"]], tooltip=row["description"]),
+                                            "value": row["value"],
+                                            "search": f"{row['name']} Act {row['act']} {row['description']}",
+                                        }
+                                        for row in sorted(PERMANENT_BOONS, key=lambda item: (item["act"], item["name"]))
+                                    ],
+                                    value=[],
+                                    multi=True,
+                                    placeholder="Search permanent bonuses",
+                                    className="rich-dropdown permanent-boons-dropdown",
+                                    optionHeight=92,
+                                    maxHeight=420,
+                                    persistence=True,
+                                    persistence_type="session",
+                                ),
+                            ], className="equipment-card permanent-boons-card"),
                         ], className="tab-content leveling-content",
                     ),
                 ),
@@ -1579,6 +1641,10 @@ app.layout = html.Div(
                         ),
                         html.Section(
                             [html.H3("Equipment"), html.Div(id="sheet-equipment", className="sheet-equipment-grid")],
+                            className="sheet-panel sheet-equipment-panel",
+                        ),
+                        html.Section(
+                            [html.H3("Permanent Boons"), html.Div(id="sheet-permanent-boons", className="sheet-equipment-grid")],
                             className="sheet-panel sheet-equipment-panel",
                         ),
                         html.Div(id="character-summary", className="character-sheet-content"),
@@ -1882,6 +1948,7 @@ def selected_build_name(build_id):
     Output("optimizer-use-limited-resources", "value", allow_duplicate=True),
     Output("proficient-equipment-only", "value", allow_duplicate=True),
     Output("item-location-checklist", "value", allow_duplicate=True),
+    Output("permanent-boons", "value", allow_duplicate=True),
     Output("act-equipment-loadouts", "data", allow_duplicate=True), Output("equipment-act-tab", "value", allow_duplicate=True),
     Output("confirm-build-overwrite", "displayed"),
     Output("pending-build-overwrite", "data"),
@@ -1909,6 +1976,7 @@ def selected_build_name(build_id):
     State("optimizer-lightning-charges", "value"), State("optimizer-use-limited-resources", "value"),
     State("proficient-equipment-only", "value"),
     State("item-location-checklist", "value"),
+    State("permanent-boons", "value"),
     State("act-equipment-loadouts", "data"), State("equipment-act-tab", "value"),
     State("pending-build-overwrite", "data"),
     prevent_initial_call=True,
@@ -1918,7 +1986,8 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                         class_choice_values, class_choice_ids, spell_values, spell_ids, melee_main, melee_off,
                         ranged_main, ranged_off, headwear, armour, handwear, footwear, cape, necklace, ring_1, ring_2,
                         visibility, elevation, attacker_conditions, target_conditions, active_features,
-                        wild_shape, cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items, act_loadouts, equipment_act, pending_overwrite):
+                        wild_shape, cleaver_type, lightning_charges, limited_resources, proficient_only, acquired_items,
+                        permanent_boons, act_loadouts, equipment_act, pending_overwrite):
     # The first three restore outputs are ALL-pattern level controls and must
     # return one value per matching component, even when none should change.
     empty_restore = [
@@ -1926,7 +1995,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
         [no_update] * 12,
         [no_update] * 12,
         [no_update] * 12,
-        *([no_update] * 25),
+        *([no_update] * 26),
     ]
     user_id, _ = user_identity()
     if not user_id:
@@ -1970,6 +2039,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
             conditions.get("wild_shape"), conditions.get("cleaver_type"), conditions.get("lightning_charges", 0), conditions.get("limited_resources", []),
             payload.get("proficient_only", []),
             payload.get("acquired_items", []),
+            payload.get("permanent_boons", []),
             payload.get("equipment_loadouts", {"active_act": payload.get("equipment_act", 1), "loadouts": {str(payload.get("equipment_act", 1)): {key.replace("_", "-"): value for key, value in equipment.items()}}}),
             payload.get("equipment_act", 1),
             False, None,
@@ -1991,6 +2061,7 @@ def manage_saved_builds(_save, _open, _delete, _confirm_overwrite, build_id, bui
                        "lightning_charges": lightning_charges, "limited_resources": limited_resources},
         "proficient_only": proficient_only,
         "acquired_items": list(acquired_items or []),
+        "permanent_boons": list(permanent_boons or []),
     }
     current_loadouts = dict(act_loadouts or {"active_act": int(equipment_act or 1), "loadouts": {}})
     saved_loadouts = dict(current_loadouts.get("loadouts") or {})
@@ -2819,10 +2890,20 @@ def update_ability_state(_step_clicks, _bonus_clicks, data):
     Input("equipment-cape", "value"),
     Input("equipment-necklace", "value"), Input("equipment-ring-1", "value"), Input("equipment-ring-2", "value"),
     Input("race-dropdown", "value"), Input("subrace-dropdown", "value"),
+    Input("permanent-boons", "value"),
 )
 def calculate_equipment_effects(*values):
-    equipment_ids, race, subrace = values[:-2], values[-2], values[-1]
-    return equipment_effect_data(equipment_ids, race, subrace)
+    equipment_ids, race, subrace, selected_boons = values[:-3], values[-3], values[-2], values[-1]
+    effects = equipment_effect_data(equipment_ids, race, subrace)
+    boon_effects = permanent_boon_effect_data(selected_boons)
+    effects["ability_adjustments"].extend(boon_effects["ability_adjustments"])
+    saving_bonuses = Counter(effects.get("saving_throw_bonuses", {}))
+    saving_bonuses.update(boon_effects["saving_throw_bonuses"])
+    effects["saving_throw_bonuses"] = dict(saving_bonuses)
+    effects["saving_throw_advantages"].extend(boon_effects["saving_throw_advantages"])
+    effects["skill_bonuses"] = boon_effects["skill_bonuses"]
+    effects["permanent_boons"] = boon_effects["permanent_boons"]
+    return effects
 
 
 @callback(
@@ -2921,7 +3002,7 @@ def render_saving_throws(ability_data, feat_effects, equipment_effects, race, su
     for ability, amount in (equipment_effects or {}).get("saving_throw_bonuses", {}).items():
         if ability in ABILITIES:
             bonuses[ability] += int(amount)
-            sources[ability].append(f"Race-activated equipment {int(amount):+d}")
+            sources[ability].append(f"Equipment/permanent boons {int(amount):+d}")
     for advantage in (equipment_effects or {}).get("saving_throw_advantages", []):
         for ability in advantage.get("abilities", []):
             if ability in ABILITIES:
@@ -3130,11 +3211,11 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
         proficiency_value = proficiency * (2 if skill in expertise else 1 if skill in proficient else 0)
         if not proficiency_value and jack_of_all_trades:
             proficiency_value = proficiency // 2
-        item_value = int(item_bonuses.get(skill, 0) or 0)
+        item_value = int(item_bonuses.get(skill, 0) or 0) + int((equipment_effects or {}).get("skill_bonuses", {}).get(skill, 0) or 0)
         total = base_modifier + proficiency_value + item_value
         marker = "◆" if skill in expertise else "●" if skill in proficient else "◐" if jack_of_all_trades else "○"
         status = "expertise" if skill in expertise else "proficient" if skill in proficient else "half-proficient" if jack_of_all_trades else "untrained"
-        calculation = f"{ability} {base_modifier:+d} + proficiency {proficiency_value:+d} + items {item_value:+d}"
+        calculation = f"{ability} {base_modifier:+d} + proficiency {proficiency_value:+d} + bonuses {item_value:+d}"
         rows.append(
             html.Div(
                 [
@@ -3434,6 +3515,48 @@ def equipment_effect_data(equipment_ids, race=None, subrace=None) -> dict:
         "equipped_items": list(dict.fromkeys(equipped_items)),
         "saving_throw_bonuses": dict(saving_throw_bonuses),
         "saving_throw_advantages": saving_throw_advantages,
+    }
+
+
+def permanent_boon_effect_data(selected_boons) -> dict:
+    selected = set(selected_boons or [])
+    adjustments = []
+    saving_throw_bonuses = Counter()
+    saving_throw_advantages = []
+    skill_bonuses = Counter()
+
+    for value in selected:
+        if value.startswith("ethel-hair:"):
+            ability = value.split(":", 1)[1]
+            if ability in ABILITIES:
+                adjustments.append({"ability": ability, "kind": "add", "value": 1, "cap": 30, "source": "Auntie Ethel's Hair"})
+        elif value.startswith("mirror-loss:"):
+            ability = value.split(":", 1)[1]
+            if ability in ABILITIES:
+                adjustments.append({"ability": ability, "kind": "add", "value": 2, "cap": 24, "source": "Mirror of Loss"})
+
+    if "potion-everlasting-vigour" in selected:
+        adjustments.append({"ability": "Strength", "kind": "add", "value": 2, "cap": 30, "source": "Potion of Everlasting Vigour"})
+    if "patriars-memory" in selected:
+        adjustments.append({"ability": "Charisma", "kind": "add", "value": 1, "cap": 24, "source": "Patriar's Memory"})
+    if "anointed-in-splendour" in selected:
+        saving_throw_bonuses.update({ability: 2 for ability in ABILITIES})
+    if "forbidden-knowledge" in selected:
+        saving_throw_bonuses["Wisdom"] += 1
+        for skill, ability in SKILL_TO_ABILITY.items():
+            if ability == "Wisdom":
+                skill_bonuses[skill] += 1
+    if "paid-the-price" in selected:
+        skill_bonuses["Intimidation"] += 1
+    if "githzerai-mind-barrier" in selected:
+        saving_throw_advantages.append({"abilities": ["Intelligence"], "source": "Githzerai Mind Barrier", "condition": "Advantage"})
+
+    return {
+        "ability_adjustments": adjustments,
+        "saving_throw_bonuses": dict(saving_throw_bonuses),
+        "saving_throw_advantages": saving_throw_advantages,
+        "skill_bonuses": dict(skill_bonuses),
+        "permanent_boons": [row["name"] for row in PERMANENT_BOONS if row["value"] in selected],
     }
 
 
@@ -5438,6 +5561,25 @@ def render_sheet_equipment(*values):
             )
             rows.append(html.Div([html.Span(label, className="summary-label"), item], className="summary-row"))
     return rows or html.P("Selected equipment will appear here.", className="sheet-empty")
+
+
+@callback(Output("sheet-permanent-boons", "children"), Input("permanent-boons", "value"))
+def render_sheet_permanent_boons(selected_boons):
+    selected = set(selected_boons or [])
+    rows = []
+    for boon in PERMANENT_BOONS:
+        if boon["value"] not in selected:
+            continue
+        rows.append(html.Div([
+            html.Span(f"Act {boon['act']}", className="summary-label"),
+            html.Span(
+                boon["name"],
+                className="sheet-tooltip-term",
+                tabIndex=0,
+                **{"data-tooltip": boon["description"]},
+            ),
+        ], className="summary-row"))
+    return rows or html.P("Selected permanent bonuses will appear here.", className="sheet-empty")
 
 
 @callback(
