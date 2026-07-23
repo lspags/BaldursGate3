@@ -573,15 +573,18 @@ def equipment_option(row: dict[str, str]) -> dict[str, Any]:
     details = meaningful(
         f"Available by Act {equipment_earliest_act(row)}",
         equipment_type_label(row),
+        row.get("rarity", "") or "Common",
         row.get("damage", ""),
         f"AC {row['armour_class']}" if row.get("armour_class") else "",
         row.get("shared_properties", ""),
-        row.get("special", ""),
     )
     return {
-        "label": option_label(row["item"], details, equipment_rarity_class(row)),
+        "label": option_label(
+            row["item"], details, equipment_rarity_class(row),
+            tooltip=equipment_tooltip(row),
+        ),
         "value": row["equipment_id"],
-        "search": f"{row['item']} {' '.join(details)}",
+        "search": f"{row['item']} {' '.join(details)} {row.get('special', '')} {row.get('where_to_find', '')}",
     }
 
 
@@ -598,13 +601,20 @@ def equipment_field(label: str, component_id: str) -> html.Div:
 
 def equipment_tooltip(row: dict[str, str]) -> str:
     parts = meaningful(
-        equipment_type_label(row), row.get("rarity", "") or "Common",
+        row.get("item", ""),
+        f"Available by Act {equipment_earliest_act(row)}",
+        f"Type: {equipment_type_label(row)}",
+        f"Rarity: {row.get('rarity', '') or 'Common'}",
+        f"Enchantment: {row.get('enchantment')}" if row.get("enchantment") else "",
         f"Damage: {row.get('damage')} {row.get('damage_type', '')}" if row.get("damage") else "",
         f"Armour Class: {row.get('armour_class')}" if row.get("armour_class") else "",
         f"Properties: {row.get('shared_properties')}" if row.get("shared_properties") else "",
-        row.get("special", ""), row.get("description", ""),
+        f"Actions: {row.get('shared_action')}" if row.get("shared_action") else "",
+        f"Effects: {row.get('special')}" if row.get("special") else "",
+        row.get("description", ""),
+        f"Location: {row.get('where_to_find')}" if row.get("where_to_find") else "",
     )
-    return " · ".join(parts)[:900]
+    return "\n".join(parts)[:1800]
 
 
 def item_has_property(row: dict[str, str] | None, name: str) -> bool:
