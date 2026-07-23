@@ -1422,7 +1422,14 @@ app.layout = html.Div(
                                     dcc.Tab(label=f"Act {act}", value=act, className="builder-tab", selected_className="builder-tab builder-tab--selected")
                                     for act in (1, 2, 3)
                                 ], className="equipment-act-tabs"),
-                                html.P("The open act loadout is applied to the character sheet and optimizer. Later acts include all equipment obtainable in earlier acts.", className="condition-help"),
+                                html.Button(
+                                    "Copy previous act loadout",
+                                    id="copy-previous-act-equipment",
+                                    n_clicks=0,
+                                    className="build-action-button equipment-copy-button",
+                                    style={"display": "none"},
+                                ),
+                                html.P("Each act has an independent loadout. The open act is applied to the character sheet and optimizer.", className="condition-help"),
                                 dcc.Checklist(
                                     id="proficient-equipment-only",
                                     options=[{"label": " Only show items I am proficient with", "value": "proficient"}],
@@ -5307,47 +5314,62 @@ EQUIPMENT_SLOT_IDS = ["melee-main", "melee-off", "ranged-main", "ranged-off", "h
 
 
 @callback(
+    Output("copy-previous-act-equipment", "children"),
+    Output("copy-previous-act-equipment", "style"),
+    Input("equipment-act-tab", "value"),
+)
+def display_copy_previous_act_button(selected_act):
+    act = int(selected_act or 1)
+    if act <= 1:
+        return "Copy previous act loadout", {"display": "none"}
+    return f"Copy Act {act - 1} loadout into Act {act}", {}
+
+
+@callback(
     *[Output(f"equipment-{slot}", "value", allow_duplicate=True) for slot in EQUIPMENT_SLOT_IDS],
     Output("act-equipment-loadouts", "data", allow_duplicate=True),
     Input("equipment-act-tab", "value"),
+    Input("copy-previous-act-equipment", "n_clicks"),
     *[Input(f"equipment-{slot}", "value") for slot in EQUIPMENT_SLOT_IDS],
     State("act-equipment-loadouts", "data"),
     prevent_initial_call=True,
 )
-def manage_act_loadouts(selected_act, *args):
+def manage_act_loadouts(selected_act, _copy_clicks, *args):
     values, stored = list(args[:-1]), dict(args[-1] or {})
     loadouts = dict(stored.get("loadouts") or {})
     previous_act = int(stored.get("active_act") or 1)
 
-    def save_and_inherit(act, slot_values):
-        """Save one act and fill only empty slots in later acts."""
-        new_upstream = dict(zip(EQUIPMENT_SLOT_IDS, slot_values))
-        loadouts[str(act)] = new_upstream
-        for later_act in range(act + 1, 4):
-            key = str(later_act)
-            old_downstream = dict(loadouts.get(key) or {})
-            new_downstream = dict(old_downstream)
-            for slot in EQUIPMENT_SLOT_IDS:
-                downstream_value = old_downstream.get(slot)
-                if slot not in old_downstream or downstream_value in (None, ""):
-                    new_downstream[slot] = new_upstream.get(slot)
-            loadouts[key] = new_downstream
-            new_upstream = new_downstream
+    def save_loadout(act, slot_values):
+        """Save exactly one act without changing either neighbouring act."""
+        loadouts[str(act)] = dict(zip(EQUIPMENT_SLOT_IDS, slot_values))
 
-    if ctx.triggered_id == "equipment-act-tab":
-        save_and_inherit(previous_act, values)
-        target = loadouts.get(str(int(selected_act)), {})
+    def restore_loadout(act, target):
         restoring_slots = [
             slot for slot, old_value in zip(EQUIPMENT_SLOT_IDS, values)
             if target.get(slot) != old_value
         ]
         stored.update({
-            "active_act": int(selected_act),
+            "active_act": act,
             "loadouts": loadouts,
             "restoring_slots": restoring_slots,
             "restore_values": {slot: target.get(slot) for slot in restoring_slots},
         })
         return *[target.get(slot) for slot in EQUIPMENT_SLOT_IDS], stored
+
+    if ctx.triggered_id == "equipment-act-tab":
+        save_loadout(previous_act, values)
+        target = loadouts.get(str(int(selected_act)), {})
+        return restore_loadout(int(selected_act), target)
+
+    if ctx.triggered_id == "copy-previous-act-equipment":
+        active_act = int(selected_act or previous_act)
+        if active_act <= 1:
+            return *([no_update] * len(EQUIPMENT_SLOT_IDS)), no_update
+        save_loadout(active_act, values)
+        source = dict(loadouts.get(str(active_act - 1)) or {})
+        copied = {slot: source.get(slot) for slot in EQUIPMENT_SLOT_IDS}
+        loadouts[str(active_act)] = copied
+        return restore_loadout(active_act, copied)
 
     # Restoring a loadout changes several dropdowns at once, and dependent weapon
     # callbacks can follow with another update.  Saving the entire visible form
@@ -5370,14 +5392,6 @@ def manage_act_loadouts(selected_act, *args):
                 restoring_slots.discard(slot)
             continue
         current_loadout[slot] = slot_value
-        inherited_value = slot_value
-        for later_act in range(active_act + 1, 4):
-            later_loadout = dict(loadouts.get(str(later_act)) or {})
-            if slot not in later_loadout or later_loadout.get(slot) in (None, ""):
-                later_loadout[slot] = inherited_value
-                loadouts[str(later_act)] = later_loadout
-            else:
-                inherited_value = later_loadout.get(slot)
     loadouts[str(active_act)] = current_loadout
     stored.update({"active_act": active_act, "loadouts": loadouts})
     if restoring_slots:

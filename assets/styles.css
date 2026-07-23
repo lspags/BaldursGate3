@@ -391,6 +391,7 @@ body {
 .equipment-card h3 { margin: 0 0 1rem; color: #e8c77d; }
 .equipment-act-tabs { margin: 14px 0 9px; }
 .equipment-act-tabs .tab { min-width: 110px; }
+.equipment-copy-button { margin: 4px 0 8px; }
 .equipment-grid { display: grid; grid-template-columns: repeat(2, minmax(300px, 1fr)); gap: 1rem 1.25rem; }
 .item-location-card { display: grid; gap: 10px; }
 .item-location-card h3 { margin-bottom: 0; }
