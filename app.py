@@ -5477,10 +5477,6 @@ def manage_act_loadouts(selected_act, _copy_clicks, *args):
     loadouts = dict(stored.get("loadouts") or {})
     previous_act = int(stored.get("active_act") or 1)
 
-    def save_loadout(act, slot_values):
-        """Save exactly one act without changing either neighbouring act."""
-        loadouts[str(act)] = dict(zip(EQUIPMENT_SLOT_IDS, slot_values))
-
     def restore_loadout(act, target):
         restoring_slots = [
             slot for slot, old_value in zip(EQUIPMENT_SLOT_IDS, values)
@@ -5495,7 +5491,6 @@ def manage_act_loadouts(selected_act, _copy_clicks, *args):
         return *[target.get(slot) for slot in EQUIPMENT_SLOT_IDS], stored
 
     if ctx.triggered_id == "equipment-act-tab":
-        save_loadout(previous_act, values)
         target = loadouts.get(str(int(selected_act)), {})
         return restore_loadout(int(selected_act), target)
 
@@ -5503,7 +5498,6 @@ def manage_act_loadouts(selected_act, _copy_clicks, *args):
         active_act = int(selected_act or previous_act)
         if active_act <= 1:
             return *([no_update] * len(EQUIPMENT_SLOT_IDS)), no_update
-        save_loadout(active_act, values)
         source = dict(loadouts.get(str(active_act - 1)) or {})
         copied = {slot: source.get(slot) for slot in EQUIPMENT_SLOT_IDS}
         loadouts[str(active_act)] = copied
@@ -5515,6 +5509,12 @@ def manage_act_loadouts(selected_act, _copy_clicks, *args):
     # the controls that triggered this callback, leaving every other saved slot
     # untouched.
     active_act = int(selected_act or previous_act)
+    if active_act != previous_act:
+        # The tab has changed but its store update has not arrived in this
+        # callback State yet.  Any dropdown event in this window was caused by
+        # Dash replacing the act-specific option list, not by the user editing
+        # the destination loadout.
+        return *([no_update] * len(EQUIPMENT_SLOT_IDS)), no_update
     triggered_ids = set(ctx.triggered_prop_ids.values())
     changed_slots = [slot for slot in EQUIPMENT_SLOT_IDS if f"equipment-{slot}" in triggered_ids]
     current_loadout = dict(loadouts.get(str(active_act)) or {})
