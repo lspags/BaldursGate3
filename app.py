@@ -175,6 +175,26 @@ RANGER_NATURAL_EXPLORERS = {
     "Wasteland Wanderer: Fire": "Resistance to Fire damage.",
     "Wasteland Wanderer: Poison": "Resistance to Poison damage.",
 }
+CLASS_STARTING_SKILLS = {
+    "Barbarian": (2, ["Animal Handling", "Athletics", "Intimidation", "Nature", "Perception", "Survival"]),
+    "Bard": (3, ["Acrobatics", "Animal Handling", "Arcana", "Athletics", "Deception", "History", "Insight", "Intimidation", "Investigation", "Medicine", "Nature", "Perception", "Performance", "Persuasion", "Religion", "Sleight of Hand", "Stealth", "Survival"]),
+    "Cleric": (2, ["History", "Insight", "Medicine", "Persuasion", "Religion"]),
+    "Druid": (2, ["Animal Handling", "Arcana", "Insight", "Medicine", "Nature", "Perception", "Religion", "Survival"]),
+    "Fighter": (2, ["Acrobatics", "Animal Handling", "Athletics", "History", "Insight", "Intimidation", "Perception", "Survival"]),
+    "Monk": (2, ["Acrobatics", "Athletics", "History", "Insight", "Religion", "Stealth"]),
+    "Paladin": (2, ["Athletics", "Insight", "Intimidation", "Medicine", "Persuasion", "Religion"]),
+    "Ranger": (3, ["Animal Handling", "Athletics", "Insight", "Investigation", "Nature", "Perception", "Stealth", "Survival"]),
+    "Rogue": (4, ["Acrobatics", "Athletics", "Deception", "Insight", "Intimidation", "Investigation", "Perception", "Performance", "Persuasion", "Sleight of Hand", "Stealth"]),
+    "Sorcerer": (2, ["Arcana", "Deception", "Insight", "Intimidation", "Persuasion", "Religion"]),
+    "Warlock": (2, ["Arcana", "Deception", "History", "Intimidation", "Investigation", "Religion"]),
+    "Wizard": (2, ["Arcana", "History", "Insight", "Investigation", "Medicine", "Religion"]),
+}
+MULTICLASS_SKILL_CHOICES = {
+    "Bard": 1,
+    "Cleric": 2,
+    "Ranger": 1,
+    "Rogue": 1,
+}
 SWORDS_BARD_ATTACKS = ["Defensive Flourish (Melee)", "Defensive Flourish (Ranged)", "Slashing Flourish (Melee)", "Slashing Flourish (Ranged)", "Mobile Flourish (Melee)", "Mobile Flourish (Ranged)"]
 SUBCLASS_ATTACK_FEATURES = {
     "Frenzied Strike", "Enraged Throw",
@@ -2379,7 +2399,6 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
     if class_counts.get("Wizard", 0) >= 2 and ("Wizard", "Bladesinging") in selected_subclasses:
         proficient_skills.add("Performance")
     used_unique["Skill Proficiencies"].update(proficient_skills)
-    used_unique["Skill Proficiencies"].update(proficient_skills)
     ranger_skill_grants = {
         "Bounty Hunter": "Investigation", "Keeper of the Veil": "Arcana", "Mage Breaker": "Arcana",
         "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
@@ -2481,12 +2500,8 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             ))
 
         if counts[class_name] == 1:
-            class_row = next(row for row in CLASSES if row["class"] == class_name)
-            multiclass_skill_choices = {"Bard": 1, "Cleric": 2, "Ranger": 1, "Rogue": 1}
-            skill_limit = int(class_row.get("skill_proficiency_choices") or 0) if level == 1 else multiclass_skill_choices.get(class_name, 0)
-            skill_options = [skill for skill in SKILL_TO_ABILITY if skill in class_row.get("skill_proficiencies", "")]
-            if class_name == "Warlock":
-                skill_options = [skill for skill in skill_options if skill != "Nature"]
+            starting_limit, skill_options = CLASS_STARTING_SKILLS[class_name]
+            skill_limit = starting_limit if level == 1 else MULTICLASS_SKILL_CHOICES.get(class_name, 0)
             if skill_limit and skill_options:
                 controls.append(choice_control(
                     level, "Skill Proficiencies", f"Skill Proficiencies ({skill_limit})",
