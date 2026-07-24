@@ -1580,6 +1580,13 @@ app.layout = html.Div(
                         html.H2(id="summary-name", children="Unnamed Adventurer"),
                         html.Section(
                             [
+                                html.H3("Ability Scores"),
+                                html.Div(id="sheet-abilities", className="sheet-ability-grid"),
+                            ],
+                            className="sheet-panel sheet-abilities-panel",
+                        ),
+                        html.Section(
+                            [
                                 html.H3("Class & Level"),
                                 html.Div(
                                     [
@@ -1589,6 +1596,15 @@ app.layout = html.Div(
                                     ],
                                     id="sheet-class-level",
                                     className="sheet-identity sheet-class-identity",
+                                ),
+                                html.Div(
+                                    [
+                                        detail_block("Race", "Not selected"),
+                                        detail_block("Subrace", "Not selected"),
+                                        detail_block("Background", "Not selected"),
+                                    ],
+                                    id="sheet-background-identity",
+                                    className="sheet-identity sheet-background-identity",
                                 ),
                                 html.Div([
                                     html.Div([
@@ -1611,17 +1627,6 @@ app.layout = html.Div(
                                 html.Div(id="sheet-selected-feats", className="sheet-selected-feats"),
                             ],
                             className="sheet-panel sheet-class-panel",
-                        ),
-                        html.Section(
-                            [html.H3("Class Features"), html.Div(id="sheet-class-features", className="sheet-class-feature-groups")],
-                            className="sheet-panel sheet-class-features-panel",
-                        ),
-                        html.Section(
-                            [
-                                html.H3("Ability Scores"),
-                                html.Div(id="sheet-abilities", className="sheet-ability-grid"),
-                            ],
-                            className="sheet-panel sheet-abilities-panel",
                         ),
                         html.Section(
                             [
@@ -1647,22 +1652,33 @@ app.layout = html.Div(
                             className="sheet-panel sheet-skills-panel",
                         ),
                         html.Section(
-                            [html.H3("Spell Slots & Resources"), html.Div(id="sheet-spell-slots", className="sheet-spell-slots"), html.Div(id="sheet-spells", className="sheet-spells")],
-                            className="sheet-panel sheet-spells-panel",
+                            [html.H3("Movement & Proficiencies"), html.Div(id="sheet-movement-proficiencies")],
+                            className="sheet-panel sheet-movement-proficiencies-panel",
+                        ),
+                        html.Section(
+                            [
+                                html.H3("Features & Traits"),
+                                html.Div(id="sheet-racial-features"),
+                                html.Div(id="sheet-class-features", className="sheet-class-feature-groups"),
+                            ],
+                            className="sheet-panel sheet-class-features-panel",
                         ),
                         html.Section(
                             [html.H3("Defences"), html.Div(id="sheet-defences", className="sheet-defences-grid")],
                             className="sheet-panel sheet-defences-panel",
                         ),
                         html.Section(
-                            [html.H3("Equipment"), html.Div(id="sheet-equipment", className="sheet-equipment-grid")],
-                            className="sheet-panel sheet-equipment-panel",
+                            [html.H3("Spell Slots & Resources"), html.Div(id="sheet-spell-slots", className="sheet-spell-slots"), html.Div(id="sheet-spells", className="sheet-spells")],
+                            className="sheet-panel sheet-spells-panel",
                         ),
                         html.Section(
                             [html.H3("Permanent Boons"), html.Div(id="sheet-permanent-boons", className="sheet-equipment-grid")],
                             className="sheet-panel sheet-equipment-panel",
                         ),
-                        html.Div(id="character-summary", className="character-sheet-content"),
+                        html.Section(
+                            [html.H3("Equipment"), html.Div(id="sheet-equipment", className="sheet-equipment-grid")],
+                            className="sheet-panel sheet-equipment-panel",
+                        ),
                     ],
                     className="character-sheet",
                 ),
@@ -5664,7 +5680,9 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
 
 @callback(
     Output("summary-name", "children"),
-    Output("character-summary", "children"),
+    Output("sheet-background-identity", "children"),
+    Output("sheet-movement-proficiencies", "children"),
+    Output("sheet-racial-features", "children"),
     Output("character-store", "data"),
     Input("character-name", "value"),
     Input("race-dropdown", "value"),
@@ -5690,14 +5708,11 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
     )
     background_row = next((row for row in BACKGROUNDS if row["background"] == background), None)
 
-    identity = html.Div(
-        [
-            detail_block("Race", race or "Not selected"),
-            detail_block("Subrace", subrace or ("No subrace" if race and not subrace_row else "Not selected")),
-            detail_block("Background", background or "Not selected"),
-        ],
-        className="sheet-identity",
-    )
+    identity = [
+        detail_block("Race", race or "Not selected"),
+        detail_block("Subrace", subrace or ("No subrace" if race and not subrace_row else "Not selected")),
+        detail_block("Background", background or "Not selected"),
+    ]
 
     movement = metric_movement(race_row["base_speed"]) if race_row else "—"
     monk_level = sum(value == "Monk" for value in (level_classes or []))
@@ -5847,22 +5862,19 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
     if not features:
         features.append(html.P("Racial features will appear here.", className="sheet-empty"))
 
-    summary = html.Div(
-        [
-            identity,
-            html.Div(
-                [
-                    html.Section(
-                        [html.H3("Movement"), html.Div(movement, className="movement-value")],
-                        className="sheet-panel movement-panel",
-                    ),
-                    html.Section([html.H3("Proficiencies"), *proficiencies], className="sheet-panel"),
-                    html.Section([html.H3("Features & Traits"), *features], className="sheet-panel sheet-panel--wide"),
-                ],
-                className="sheet-grid",
-            ),
-        ]
-    )
+    movement_and_proficiencies = [
+        html.Div(
+            [html.Span("Movement", className="summary-label"), html.Span(movement, className="movement-value")],
+            className="summary-row",
+        ),
+        *proficiencies,
+    ]
 
     data = {"name": name or "", "race": race, "subrace": subrace, "background": background, "human_versatility_skill": human_skill if race == "Human" else None}
-    return name.strip() if name and name.strip() else "Unnamed Adventurer", summary, data
+    return (
+        name.strip() if name and name.strip() else "Unnamed Adventurer",
+        identity,
+        movement_and_proficiencies,
+        features,
+        data,
+    )

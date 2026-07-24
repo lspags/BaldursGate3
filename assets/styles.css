@@ -337,6 +337,7 @@ body {
 .sheet-spell-class { color: #7e2629; font-family: Georgia, serif; font-size: 1rem; }
 .sheet-spell-class-card .summary-row { padding: 8px 0; }
 .sheet-class-identity { margin-bottom: 0; }
+.sheet-background-identity { margin: 10px 0 12px; }
 .sheet-panel .sheet-class-identity .summary-row { align-content: center; gap: 7px; min-width: 0; min-height: 78px; padding: 13px 15px; background: rgba(255, 252, 235, 0.48); border: 1px solid rgba(91, 59, 29, 0.52); }
 .sheet-class-identity .summary-row > span { min-width: 0; overflow-wrap: anywhere; }
 .sheet-selected-feats { display: grid; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(91, 59, 29, 0.22); }
@@ -421,6 +422,7 @@ body {
 .sheet-defence-column.immunity { border-top: 3px solid #32715e; }
 .sheet-defence-column.vulnerability { border-top: 3px solid #8b3034; }
 .sheet-class-features-panel { width: 100%; }
+#sheet-racial-features { margin-bottom: 10px; }
 .sheet-class-feature-groups { display: grid; gap: 10px; }
 .sheet-class-feature-group { display: grid; grid-template-columns: minmax(90px, .3fr) minmax(0, 1.7fr); gap: 12px; align-items: start; padding: 11px 12px; background: rgba(255, 252, 235, .48); border: 1px solid rgba(91, 59, 29, .32); border-radius: 3px; }
 .sheet-feature-source { color: #7e2629; font-family: Georgia, serif; font-size: .88rem; letter-spacing: .04em; }
