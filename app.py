@@ -1628,7 +1628,6 @@ app.layout = html.Div(
                                         html.Span("—", id="sheet-movement", title="Movement speed"),
                                     ], className="summary-row sheet-initiative-row sheet-movement-row"),
                                 ], className="sheet-vitals-grid"),
-                                html.Div(id="sheet-selected-feats", className="sheet-selected-feats"),
                             ],
                             className="sheet-panel sheet-class-panel",
                         ),
@@ -1662,6 +1661,7 @@ app.layout = html.Div(
                         html.Section(
                             [
                                 html.H3("Features & Traits"),
+                                html.Div(id="sheet-selected-feats", className="sheet-selected-feats"),
                                 html.Div(id="sheet-racial-features"),
                                 html.Div(id="sheet-class-features", className="sheet-class-feature-groups"),
                             ],
