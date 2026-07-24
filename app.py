@@ -137,6 +137,11 @@ CHOICE_FEAT_ABILITIES = {
     "Weapon Master": ["Strength", "Dexterity"], "Resilient": ABILITIES,
 }
 RITUAL_SPELLS = ["Speak with Dead", "Find Familiar", "Longstrider", "Enhance Leap", "Disguise Self", "Speak with Animals"]
+TURN_OPTIMIZER_EXCLUDED_SPELLS = {
+    # The summoned weapon rolls initiative and attacks on its own turn. Its
+    # damage is not part of the summoning character's action sequence.
+    "Spiritual Weapon",
+}
 WARLOCK_LEVEL_2_INVOCATIONS = [
     "Agonising Blast", "Armour of Shadows", "Beast Speech", "Beguiling Influence", "Devil's Sight",
     "Fiendish Vigour", "Mask of Many Faces", "One with Shadows", "Repelling Blast", "Thief of Five Fates",
@@ -4645,6 +4650,8 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
 
     for spell_name in spell_names:
         if "Rage" in active_features:
+            continue
+        if spell_name in TURN_OPTIMIZER_EXCLUDED_SPELLS:
             continue
         row = next((item for item in SPELLS if item["spell"] == spell_name), None)
         if not row or row["damage_effect"] in {"", "-"}:
