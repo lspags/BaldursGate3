@@ -337,8 +337,9 @@ body {
 .sheet-spell-class { color: #7e2629; font-family: Georgia, serif; font-size: 1rem; }
 .sheet-spell-class-card .summary-row { padding: 8px 0; }
 .sheet-class-identity { margin-bottom: 0; }
-.sheet-background-identity { margin: 10px 0 12px; }
-.sheet-panel .sheet-class-identity .summary-row { align-content: center; gap: 7px; min-width: 0; min-height: 78px; padding: 13px 15px; background: rgba(255, 252, 235, 0.48); border: 1px solid rgba(91, 59, 29, 0.52); }
+.sheet-background-identity { margin: 10px 0 0; }
+.sheet-panel .sheet-class-identity .summary-row,
+.sheet-panel .sheet-background-identity .summary-row { align-content: center; gap: 7px; min-width: 0; min-height: 78px; padding: 13px 15px; background: rgba(255, 252, 235, 0.48); border: 1px solid rgba(91, 59, 29, 0.52); }
 .sheet-class-identity .summary-row > span { min-width: 0; overflow-wrap: anywhere; }
 .sheet-class-identity .summary-row > span:last-child,
 .sheet-background-identity .summary-row > span:last-child {
