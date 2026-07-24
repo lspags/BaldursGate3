@@ -1623,6 +1623,10 @@ app.layout = html.Div(
                                         html.Span("Bonus Actions", className="summary-label"),
                                         html.Span("1", id="sheet-bonus-actions", title="1 Bonus Action per turn"),
                                     ], className="summary-row sheet-initiative-row sheet-bonus-action-row"),
+                                    html.Div([
+                                        html.Span("Movement", className="summary-label"),
+                                        html.Span("—", id="sheet-movement", title="Movement speed"),
+                                    ], className="summary-row sheet-initiative-row sheet-movement-row"),
                                 ], className="sheet-vitals-grid"),
                                 html.Div(id="sheet-selected-feats", className="sheet-selected-feats"),
                             ],
@@ -1652,7 +1656,7 @@ app.layout = html.Div(
                             className="sheet-panel sheet-skills-panel",
                         ),
                         html.Section(
-                            [html.H3("Movement & Proficiencies"), html.Div(id="sheet-movement-proficiencies")],
+                            [html.H3("Weapon & Armour Proficiencies"), html.Div(id="sheet-movement-proficiencies")],
                             className="sheet-panel sheet-movement-proficiencies-panel",
                         ),
                         html.Section(
@@ -5681,6 +5685,7 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
 @callback(
     Output("summary-name", "children"),
     Output("sheet-background-identity", "children"),
+    Output("sheet-movement", "children"),
     Output("sheet-movement-proficiencies", "children"),
     Output("sheet-racial-features", "children"),
     Output("character-store", "data"),
@@ -5835,10 +5840,7 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
 
     proficiency_groups = [
         ("Weapon proficiencies", weapon_proficiencies, True),
-        ("Skill proficiencies", skill_proficiencies, False),
         ("Armour proficiencies", armour_proficiencies, False),
-        ("Saving throw proficiencies", saving_proficiencies, False),
-        ("Other proficiencies", other_proficiencies, False),
     ]
     proficiencies = [
         html.Div(
@@ -5862,19 +5864,12 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
     if not features:
         features.append(html.P("Racial features will appear here.", className="sheet-empty"))
 
-    movement_and_proficiencies = [
-        html.Div(
-            [html.Span("Movement", className="summary-label"), html.Span(movement, className="movement-value")],
-            className="summary-row",
-        ),
-        *proficiencies,
-    ]
-
     data = {"name": name or "", "race": race, "subrace": subrace, "background": background, "human_versatility_skill": human_skill if race == "Human" else None}
     return (
         name.strip() if name and name.strip() else "Unnamed Adventurer",
         identity,
-        movement_and_proficiencies,
+        movement,
+        proficiencies,
         features,
         data,
     )

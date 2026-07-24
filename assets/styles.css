@@ -384,6 +384,7 @@ body {
 }
 .sheet-vitals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .sheet-vitals-grid .sheet-initiative-row { margin-top: 0; }
+.sheet-movement-row { grid-column: 1 / -1; }
 .sheet-ac-row { border-color: rgba(126, 38, 41, 0.58); }
 .sheet-initiative-row span:last-child { color: #7e2629; font-family: Georgia, serif; font-size: 1.55rem; font-weight: 800; }
 
