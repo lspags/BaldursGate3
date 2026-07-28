@@ -2491,17 +2491,42 @@ def clear_invalid_level_chain(class_values, subclass_values, feat_values, pendin
 @callback(
     Output({"type": "feat-choice-container", "level": ALL}, "children"),
     Input({"type": "level-feat", "level": ALL}, "value"),
+    Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "level-subclass", "level": ALL}, "value"),
     State({"type": "feat-choice", "level": ALL, "field": ALL}, "value"),
     State({"type": "feat-choice", "level": ALL, "field": ALL}, "id"),
 )
-def render_feat_choices(feat_values, current_values, current_ids):
+def render_feat_choices(feat_values, class_values, subclass_values, current_values, current_ids):
     existing = {(item_id["level"], item_id["field"]): value for value, item_id in zip(current_values or [], current_ids or [])}
 
     def feat_control(level, field, label, options, multi=False):
         return feat_choice_dropdown(level, field, label, options, multi, existing.get((level, field)))
 
+    valid_feat_levels = set()
+    class_counts = Counter()
+    chosen_subclasses = {}
+    for level, class_name in enumerate(class_values or [], 1):
+        if not class_name:
+            break
+        class_counts[class_name] += 1
+        class_level = class_counts[class_name]
+        chosen_here = (subclass_values or [None] * 12)[level - 1] if level <= len(subclass_values or []) else None
+        if chosen_here:
+            chosen_subclasses[class_name] = chosen_here
+        subclass = chosen_subclasses.get(class_name)
+        progression_row = CLASS_PROGRESSIONS[class_name][class_level - 1]
+        features = " ".join([
+            progression_row.get("class_features", ""),
+            progression_row.get(snake_case(subclass), "") if subclass else "",
+        ])
+        if re.search(r"\bFeat\b", features, re.IGNORECASE):
+            valid_feat_levels.add(level)
+
     cards = []
     for level, feat in enumerate(feat_values or [], 1):
+        if level not in valid_feat_levels:
+            cards.append([])
+            continue
         controls, note = [], ""
         if feat == "Ability Improvement":
             controls = [
