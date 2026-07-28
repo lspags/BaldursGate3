@@ -484,6 +484,12 @@ body {
 .team-summary-section p { margin: 4px 0 0; font-size: .7rem; line-height: 1.45; overflow-wrap: anywhere; }
 .team-equipment-warning:not(:empty) { padding: 13px 15px; color: #ffe6c4; background: rgba(126,38,41,.72); border: 1px solid #d8a85c; border-radius: 7px; }
 .team-equipment-warning ul { margin: 7px 0 0; padding-left: 20px; }
+.team-equipment-checklist-card { margin-top: 2px; }
+.team-checklist-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 46%); gap: 22px; align-items: end; }
+.team-checklist-heading h3 { margin: 3px 0 6px; color: var(--gold-bright); font-family: Georgia, serif; }
+.team-checklist-tabs { margin: 0; }
+.team-item-location-checklist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.team-item-members { color: var(--gold-bright); font-size: .7rem; font-weight: 800; }
 .team-message:not(:empty) { padding: 11px 13px; color: var(--gold-bright); background: rgba(20,18,18,.75); border-left: 3px solid var(--gold); }
 .build-message:not(:empty) {
   position: fixed;
@@ -558,6 +564,8 @@ body {
 @media (max-width: 1220px) {
   .spell-page-slot-grid { grid-template-columns: 1fr; }
   .team-member-selectors, .team-member-summaries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .team-checklist-heading { grid-template-columns: 1fr; }
+  .team-item-location-checklist { grid-template-columns: 1fr; }
   .builder-workspace { grid-template-columns: 1fr; }
   .form-card { grid-template-columns: 1fr; }
   .field--wide { grid-column: auto; }

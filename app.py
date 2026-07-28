@@ -1800,6 +1800,40 @@ app.layout = html.Div(
             ], className="team-member-selectors"),
             html.Div(id="team-equipment-warning", className="team-equipment-warning"),
             html.Div(id="team-member-summaries", className="team-member-summaries"),
+            html.Section([
+                html.Div([
+                    html.Div([
+                        html.P("TEAM EQUIPMENT", className="eyebrow"),
+                        html.H3("Equipment Location Checklist"),
+                        html.P(
+                            "Items required by the selected team loadouts, grouped by the act in which they are obtained.",
+                            className="item-location-intro",
+                        ),
+                    ]),
+                    dcc.Tabs(
+                        id="team-equipment-checklist-act",
+                        value=1,
+                        children=[
+                            dcc.Tab(label=f"Act {act}", value=act, className="equipment-act-tab", selected_className="equipment-act-tab--selected")
+                            for act in range(1, 4)
+                        ],
+                        className="equipment-act-tabs team-checklist-tabs",
+                    ),
+                ], className="team-checklist-heading"),
+                dcc.Checklist(
+                    id="team-equipment-checklist",
+                    options=[],
+                    value=[],
+                    className="item-location-checklist team-item-location-checklist",
+                    persistence=True,
+                    persistence_type="session",
+                ),
+                html.P(
+                    "Choose team members with saved equipment for this act to build the checklist.",
+                    id="team-equipment-checklist-empty",
+                    className="item-location-empty",
+                ),
+            ], className="equipment-card item-location-card team-equipment-checklist-card"),
             html.Div(id="team-message", className="team-message", role="status"),
             dcc.ConfirmDialog(id="confirm-team-overwrite", message="A saved team already uses this name. Replace it?"),
             dcc.Store(id="pending-team-overwrite", storage_type="memory"),
@@ -1974,6 +2008,79 @@ def render_team_members(*build_ids):
         html.Ul([html.Li(f"{EQUIPMENT_BY_ID.get(item_id, {}).get('item', item_id)} — members {', '.join(map(str, slots))}") for item_id, slots in conflicts]),
     ])
     return cards, warning
+
+
+def saved_act_equipment(payload, act):
+    loadouts = (payload.get("equipment_loadouts") or {}).get("loadouts") or {}
+    loadout = loadouts.get(str(act)) or loadouts.get(act)
+    if loadout:
+        return [equipment_id for equipment_id in loadout.values() if equipment_id in EQUIPMENT_BY_ID]
+    active_act = int(payload.get("equipment_act") or 1)
+    if act == active_act:
+        return [equipment_id for equipment_id in (payload.get("equipment") or {}).values() if equipment_id in EQUIPMENT_BY_ID]
+    return []
+
+
+@callback(
+    Output("team-equipment-checklist", "options"),
+    Output("team-equipment-checklist", "value"),
+    Output("team-equipment-checklist-empty", "style"),
+    Input("team-equipment-checklist-act", "value"),
+    Input("team-member-1", "value"), Input("team-member-2", "value"),
+    Input("team-member-3", "value"), Input("team-member-4", "value"),
+    State("team-equipment-checklist", "value"),
+)
+def render_team_equipment_checklist(act, member_1, member_2, member_3, member_4, current_checked):
+    user_id, _ = user_identity()
+    if not user_id:
+        return [], [], {}
+    act = int(act or 1)
+    requirements = {}
+    acquired_by_member = {}
+    for slot, build_id in enumerate([member_1, member_2, member_3, member_4], 1):
+        if not build_id:
+            continue
+        payload = load_build(user_id, int(build_id)) or {}
+        character_name = payload.get("character_name") or f"Member {slot}"
+        acquired_by_member[slot] = set(payload.get("acquired_items") or [])
+        for equipment_id in saved_act_equipment(payload, act):
+            row = EQUIPMENT_BY_ID[equipment_id]
+            if equipment_earliest_act(row) != act:
+                continue
+            requirement = requirements.setdefault(equipment_id, {"row": row, "members": []})
+            requirement["members"].append((slot, character_name))
+
+    options = []
+    automatically_checked = set()
+    for equipment_id, requirement in sorted(
+        requirements.items(),
+        key=lambda item: (item[1]["row"].get("where_to_find", ""), item[1]["row"]["item"]),
+    ):
+        row = requirement["row"]
+        members = requirement["members"]
+        member_names = ", ".join(dict.fromkeys(name for _slot, name in members))
+        checklist_value = f"{act}:{equipment_id}"
+        if members and all(equipment_id in acquired_by_member.get(slot, set()) for slot, _name in members):
+            automatically_checked.add(checklist_value)
+        options.append({
+            "value": checklist_value,
+            "label": html.Div([
+                html.Div([
+                    html.Strong(row["item"], className=f"item-location-name {equipment_rarity_class(row)}"),
+                    html.A("Wiki", href=row.get("source_url") or "https://bg3.wiki/", target="_blank", className="item-location-link"),
+                ], className="item-location-heading"),
+                html.Span(f"Needed by: {member_names}", className="team-item-members"),
+                html.Span(
+                    (row.get("where_to_find") or "Location information is not available.").strip(),
+                    className="item-location-description",
+                ),
+            ], className="item-location-label"),
+        })
+
+    valid_values = {option["value"] for option in options}
+    retained = {value for value in (current_checked or []) if value in valid_values}
+    checked = sorted(retained | automatically_checked)
+    return options, checked, {"display": "none"} if options else {}
 
 
 @callback(
