@@ -773,6 +773,20 @@ CLASS_FEATURE_OVERRIDES = {
     "Lay on Hands": "Spend a Lay on Hands charge to heal a creature or cure it of diseases and poisons.",
     "Sneak Attack (Melee)": "Deal additional weapon damage with a finesse melee weapon when you have Advantage or an adjacent ally enables Sneak Attack.",
     "Sneak Attack (Ranged)": "Deal additional weapon damage with a ranged weapon when you have Advantage or an adjacent ally enables Sneak Attack.",
+    "Bardic Inspiration": "Use a Bonus Action and one Bardic Inspiration charge to grant an ally a die they can add to an Attack Roll, Ability Check, or Saving Throw. The die improves from d6 to d8 at Bard level 5 and d10 at level 10.",
+    "Countercharm": "Use an Action to perform until your next turn. You and nearby allies have Advantage on Saving Throws against being Charmed or Frightened.",
+    "Song of Rest": "Once per Long Rest, restore the party as though everyone had taken a Short Rest.",
+    "Channel Divinity use": "Gain a Channel Divinity charge for Cleric actions such as Turn Undead and domain-specific powers. Charges return on a Short or Long Rest.",
+    "Channel Oath": "Gain a Channel Oath charge used by oath-specific Paladin actions. The charge returns on a Short or Long Rest.",
+    "Divine Health": "Become immune to disease.",
+    "Divine Sense": "Use a Bonus Action to gain Advantage on Attack Rolls against celestials, fiends, and undead for 2 turns.",
+    "Hide in Plain Sight": "Use an Action to camouflage yourself while standing still, granting a +10 bonus to Stealth checks until you move.",
+    "Improved Wild Strike": "While Wild Shaped, make two additional attacks after the first attack with your form's unarmed weapon.",
+    "Wild Shape Improvement": "Unlock additional and stronger Wild Shape forms as your Druid level increases.",
+    "Mystic Arcanum": "Choose one level 6 Warlock spell that you can cast once per Long Rest without expending a Pact Magic spell slot.",
+    "Eldritch Invocations": "Choose permanent Warlock enhancements that modify spells, grant abilities, or provide passive bonuses. Additional invocations unlock as your Warlock level increases.",
+    "Draconic Resilience: Hit Points": "Your draconic blood increases your maximum Hit Points by 1 for every Sorcerer level.",
+    "Resistance": "Gain Resistance to the damage type associated with the selected feature, taking half damage of that type.",
 }
 
 CLASS_FEATURE_OVERRIDES.update({
@@ -829,12 +843,44 @@ def class_feature_tooltips(features, inline_descriptions=None):
     inline_descriptions = inline_descriptions or {}
     rendered = []
     for feature in dict.fromkeys(features or []):
-        row = next((item for item in CLASS_FEATURES if item["feature"].lower() == feature.lower()), None)
+        normalized_feature = re.sub(r"[^a-z0-9]+", " ", feature.lower()).strip()
+        base_feature = re.sub(r"\s*\([^)]*\)\s*$", "", feature).strip()
+        normalized_base = re.sub(r"[^a-z0-9]+", " ", base_feature.lower()).strip()
+        row = next(
+            (
+                item for item in CLASS_FEATURES
+                if re.sub(r"[^a-z0-9]+", " ", item["feature"].lower()).strip() in {normalized_feature, normalized_base}
+            ),
+            None,
+        )
         style = next((item for item in FIGHTING_STYLES if item["fighting_style"].lower() == feature.lower()), None)
         if not row:
             row = next((item for item in CLASS_FEATURES if item["feature"].lower().split(" (")[0] == feature.lower().split(" (")[0]), None)
         wiki_description = row["description"] if row else ""
         inline_description = inline_descriptions.get(feature, "")
+        override_description = CLASS_FEATURE_OVERRIDES.get(feature) or CLASS_FEATURE_OVERRIDES.get(base_feature)
+        if not override_description and re.fullmatch(r"(?:Abjuration|Conjuration|Divination|Enchantment|Evocation|Illusion|Necromancy|Transmutation) Savant", feature):
+            school = feature.split()[0]
+            override_description = f"Halves the gold cost of learning {school} spells from scrolls."
+        if not override_description and feature.startswith("Bladesong Power:"):
+            amount = re.search(r"\d+", feature)
+            override_description = f"You have {amount.group() if amount else 'a number of'} Bladesong charges, restored on a Short or Long Rest."
+        if not override_description and feature.startswith("Improved Bardic Inspiration"):
+            die = re.search(r"d\d+", feature, re.IGNORECASE)
+            override_description = f"Your Bardic Inspiration die increases to {die.group().lower() if die else 'a larger die'}."
+        draconic_ancestries = {
+            "Red": ("Fire", "Burning Hands"), "Black": ("Acid", "Grease"),
+            "Blue": ("Lightning", "Witch Bolt"), "White": ("Cold", "Armour of Agathys"),
+            "Green": ("Poison", "Ray of Sickness"), "Gold": ("Fire", "Disguise Self"),
+            "Silver": ("Cold", "Feather Fall"), "Bronze": ("Lightning", "Fog Cloud"),
+            "Copper": ("Acid", "Tasha's Hideous Laughter"), "Brass": ("Fire", "Sleep"),
+        }
+        if not override_description and feature in draconic_ancestries:
+            damage_type, spell = draconic_ancestries[feature]
+            override_description = (
+                f"Draconic Ancestry: {damage_type}. Grants {spell}; at Sorcerer level 6, "
+                f"the ancestry also powers {damage_type} resistance and damage bonuses."
+            )
         expertise_description = ""
         if feature.startswith("Expertise: "):
             expertise_skill = feature.split(":", 1)[1].strip()
@@ -851,7 +897,9 @@ def class_feature_tooltips(features, inline_descriptions=None):
         if feature in MONK_DISCIPLINE_DAMAGE:
             expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[feature]
             monk_discipline_description = f"Damage: {expression} {damage_type}; costs {ki_cost} Ki. Uses Wisdom for its attack roll or save DC unless its feature states otherwise."
-        description = expertise_description or proficiency_description or knowledge_description or CLASS_FEATURE_OVERRIDES.get(feature) or monk_discipline_description or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description]))) or f"Class feature: {feature}."
+        description = expertise_description or proficiency_description or knowledge_description or override_description or monk_discipline_description or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description])))
+        if not description:
+            description = "No effect description is available yet for this class feature."
         if rendered:
             rendered.append(", ")
         rendered.append(html.Span(feature, className="sheet-tooltip-term", tabIndex=0, **{"data-tooltip": description[:900]}))
