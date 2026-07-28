@@ -77,10 +77,39 @@ ACT_THREE_LOCATION_TERMS = ("rivington", "jungle", "forge of the nine", "wyrm's"
 # parent regions. Keep those named sublocations mapped explicitly so they do
 # not fall through to the Act One default.
 ACT_ONE_LOCATION_TERMS += ("dread hollow", "secluded cove", "ebonlake grotto", "whispering depths")
-ACT_TWO_LOCATION_TERMS += ("ruined battlefield", "house in deep shadows", "shadowed battlefield")
+ACT_TWO_LOCATION_TERMS += (
+    "ruined battlefield", "house in deep shadows", "shadowed battlefield",
+    "brain mapping puzzle", "grand mausoleum", "moonrise towers prison",
+    "moonrise towers rooftop", "necrotic laboratory", "oubliette",
+    "reithwin tollhouse", "reithwin town", "tadpoling centre",
+)
 ACT_THREE_LOCATION_TERMS += (
     "philgrave's mansion", "lady jannath's estate", "elfsong tavern", "open hand temple",
     "abandoned windmill", "astral plane", "blushing mermaid", "beehive general goods", "szarr palace",
+)
+# Named Act Three locations from bg3.wiki. Equipment pages often name only a
+# building or shop, so these must be recognized before the Act One fallback.
+ACT_THREE_LOCATION_TERMS += (
+    "abandoned cistern", "alarm machine", "ancient lair", "ancient mausoleum",
+    "arfur's mansion", "armbrust's home", "baldur's mouth", "barren's coop",
+    "basilisk gate barracks", "bloomridge park", "bonecloak's apothecary",
+    "bruc and pishe's emporium", "candulhallow's tombstones", "carm's garms",
+    "cazador's dungeon", "central watch tower", "chromatic scale",
+    "cloister of sombre embrace", "crimson draughts", "danthelon's dancing axe",
+    "devil's den", "durinbold mausoleum", "elerrathin's home", "elminster's library",
+    "facemaker's boutique", "felogyr's fireworks", "flymm cargo", "flymm's cobblers",
+    "fraygo's flophouse", "golbraith's cellar", "gorion mausoleum",
+    "graveyard (lower city)", "grey harbour docks", "gur camp", "hhune mausoleum",
+    "high hall", "knights of the shield hideout", "lavernica's home", "lustrous lass",
+    "morphic pool", "nortale's hostel", "nymph's grotto", "old garlow's place",
+    "old jol's", "peartree house", "rainforest's home", "ramazith's tower",
+    "requisitioned barn", "rivington general", "sharess' caress", "sorcerous vault",
+    "south span checkpoint", "steel watch foundry", "stormshore armoury",
+    "submersible", "sword coast couriers", "the bibliophile", "the counting house",
+    "the glitter gala", "the lodge", "the singing lute", "the velveteen elixir",
+    "the wyrmway", "undercity ruins", "underdark pleasures", "upper city",
+    "vonayn's home", "water queen's house", "western beach", "wyrm's crossing",
+    "wyrm's rock fortress", "wyrm's rock prison",
 )
 
 
