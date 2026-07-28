@@ -146,6 +146,18 @@ WARLOCK_LEVEL_2_INVOCATIONS = [
     "Agonising Blast", "Armour of Shadows", "Beast Speech", "Beguiling Influence", "Devil's Sight",
     "Fiendish Vigour", "Mask of Many Faces", "One with Shadows", "Repelling Blast", "Thief of Five Fates",
 ]
+ELDRITCH_INVOCATION_DESCRIPTIONS = {
+    "Agonising Blast": "Add your Charisma modifier to the damage of each Eldritch Blast beam, unless the modifier is negative.",
+    "Armour of Shadows": "Cast Mage Armour on yourself at will without expending a spell slot. While you are not wearing armour, Mage Armour sets your base Armour Class to 13 + Dexterity modifier.",
+    "Beast Speech": "Cast Speak with Animals on yourself at will without expending a spell slot.",
+    "Beguiling Influence": "Gain proficiency in Deception and Persuasion.",
+    "Devil's Sight": "See normally through magical and non-magical darkness to a distance of 24 m.",
+    "Fiendish Vigour": "Cast False Life on yourself at will as a level 1 spell without expending a spell slot, gaining 7 temporary Hit Points.",
+    "Mask of Many Faces": "Cast Disguise Self on yourself at will without expending a spell slot.",
+    "One with Shadows": "While in dim light or darkness, use an Action to become Invisible. The effect ends if you move, attack, cast another spell, take an action, or take damage.",
+    "Repelling Blast": "When Eldritch Blast hits, toggle an effect that pushes the target up to 4.5 m. Multiple beams against one creature only push it once.",
+    "Thief of Five Fates": "Cast Bane with a Warlock spell slot once per Long Rest. Affected creatures subtract 1d4 from Attack Rolls and Saving Throws.",
+}
 MONK_ELEMENTAL_DISCIPLINES = [
     "Blade of Rime", "Chill of the Mountain", "Fangs of the Fire Snake", "Fist of Four Thunders",
     "Fist of Unbroken Air", "Rush of the Gale Spirits", "Shaping of the Ice", "Sphere of Elemental Balance",
@@ -897,7 +909,7 @@ def class_feature_tooltips(features, inline_descriptions=None):
         if feature in MONK_DISCIPLINE_DAMAGE:
             expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[feature]
             monk_discipline_description = f"Damage: {expression} {damage_type}; costs {ki_cost} Ki. Uses Wisdom for its attack roll or save DC unless its feature states otherwise."
-        description = expertise_description or proficiency_description or knowledge_description or override_description or monk_discipline_description or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description])))
+        description = expertise_description or proficiency_description or knowledge_description or override_description or monk_discipline_description or ELDRITCH_INVOCATION_DESCRIPTIONS.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description])))
         if not description:
             description = "No effect description is available yet for this class feature."
         if rendered:
@@ -2690,7 +2702,7 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         for value in values:
             style = next((row for row in FIGHTING_STYLES if row["fighting_style"] == value), None)
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == value.lower()), None)
-            invocation_description = "Gain proficiency in Deception and Persuasion." if value == "Beguiling Influence" else "Eldritch Invocation selected as a Warlock class feature." if value in WARLOCK_LEVEL_2_INVOCATIONS else ""
+            invocation_description = ELDRITCH_INVOCATION_DESCRIPTIONS.get(value, "")
             description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or invocation_description or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
             if value in MONK_DISCIPLINE_DAMAGE:
                 expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[value]
