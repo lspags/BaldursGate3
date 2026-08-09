@@ -1184,7 +1184,7 @@ def spell_profile(class_name: str, class_level: int, ability_data, feat_effects,
     if class_name in {"Cleric", "Druid", "Wizard"}:
         prepared_limit = max(1, class_level + ability_modifier(score))
     elif class_name == "Paladin" and class_level >= 2:
-        prepared_limit = max(1, class_level // 2 + ability_modifier(score))
+        prepared_limit = max(1, class_level + ability_modifier(score))
     return {
         "level": class_level, "max_spell_level": max_spell_level, "cantrips": cantrip_limit,
         "learned": learned_limit, "prepared": prepared_limit, "ability": ability,
@@ -1403,13 +1403,6 @@ def level_spell_builder(level_classes, level_subclasses, ability_data, feat_effe
                 class_name, f"arcanum|{character_level}|mystic-arcanum",
                 "Mystic Arcanum - choose one level 6 spell", [spell_option(row) for row in rows], 1,
             ))
-        if class_name == "Paladin" and class_level >= 2 and profile["prepared"]:
-            rows = spell_rows_for_pool(class_name, subclass, "class", profile["max_spell_level"])
-            fields.append(spell_choice_field(
-                class_name, f"prepared_snapshot|{character_level}|class",
-                f"Prepared spells at Paladin level {class_level}", [spell_option(row) for row in rows], profile["prepared"],
-            ))
-
         if profile["known_caster"] and previous_learned:
             fields.extend([
                 spell_choice_field(class_name, f"replace_from|{character_level}|known", "Optional: spell to replace", [], 1),
@@ -1428,7 +1421,7 @@ def level_spell_builder(level_classes, level_subclasses, ability_data, feat_effe
     for class_name, class_level in final_counts.items():
         subclass = chosen_subclasses.get(class_name)
         profile = spell_profile(class_name, class_level, ability_data, feat_effects, equipment_effects, subclass)
-        if not profile or not profile["prepared"] or class_name == "Paladin":
+        if not profile or not profile["prepared"]:
             continue
         rows = spell_rows_for_pool(class_name, subclass, "class", profile["max_spell_level"])
         cards.append(html.Section([
@@ -2634,28 +2627,30 @@ def restore_dynamic_build_choices(payload, _feat_children, _class_children, _spe
         if "|" in (record.get("id") or {}).get("kind", "")
         or (record.get("id") or {}).get("kind", "") not in {"cantrips", "known", "prepared"}
     ]
-    # Paladin preparation used to be stored in one final-state selector.
-    # Restore it into the latest mounted level snapshot for older saves.
-    paladin_current = next((
+    # Briefly, Paladin preparation was stored as a snapshot at every level.
+    # Migrate the latest snapshot back into the single current-loadout control.
+    paladin_snapshots = [
         record for record in spell_records
         if (record.get("id") or {}).get("class") == "Paladin"
-        and (record.get("id") or {}).get("kind") == "prepared|0|current"
-    ), None)
-    if paladin_current:
-        migrated_spell_records.remove(paladin_current)
-        paladin_targets = [
+        and parse_spell_choice_kind((record.get("id") or {}).get("kind", ""))[0] == "prepared_snapshot"
+    ]
+    if paladin_snapshots:
+        migrated_spell_records = [record for record in migrated_spell_records if record not in paladin_snapshots]
+        paladin_target = next((
             item_id for item_id in (spell_ids or [])
-            if item_id.get("class") == "Paladin"
-            and parse_spell_choice_kind(item_id.get("kind", ""))[0] == "prepared_snapshot"
-        ]
-        if paladin_targets:
-            latest_target = max(paladin_targets, key=lambda item_id: parse_spell_choice_kind(item_id["kind"])[1])
+            if item_id.get("class") == "Paladin" and item_id.get("kind") == "prepared|0|current"
+        ), None)
+        latest_snapshot = max(
+            paladin_snapshots,
+            key=lambda record: parse_spell_choice_kind((record.get("id") or {}).get("kind", ""))[1],
+        )
+        if paladin_target:
             migrated_spell_records.append({
-                "id": latest_target,
-                "value": list(paladin_current.get("value") or [])[:int(latest_target.get("limit", 99))],
+                "id": paladin_target,
+                "value": list(latest_snapshot.get("value") or [])[:int(paladin_target.get("limit", 99))],
             })
         else:
-            migrated_spell_records.append(paladin_current)
+            migrated_spell_records.extend(paladin_snapshots)
     for record in spell_records:
         legacy_id = record.get("id") or {}
         legacy_kind = legacy_id.get("kind", "")
