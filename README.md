@@ -10,6 +10,18 @@ python app_local.py
 Open `http://127.0.0.1:8050` in a browser. The app reads `races.csv` and
 `backgrounds.csv` at startup, so regenerated CSV data is reflected after a restart.
 
+## Rule and data checks
+
+Core calculations live in `bg3_rules.py` rather than tooltip text. Run the
+standard-library test suite after changing rules or scraped data:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The suite covers ability modifiers, point buy, proficiency, prepared spells,
+weapon ability selection, reference builds, and basic CSV integrity.
+
 ## Posit deployment
 
 Publish the project directory with `app.py` as the entrypoint. It exposes both

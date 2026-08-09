@@ -15,6 +15,14 @@ from persistence import (
     AUTH_ENABLED, create_build_share, delete_build, delete_team, init_persistence, list_builds, list_teams, load_build,
     revoke_build_share, save_build, save_team, user_identity,
 )
+from bg3_rules import (
+    EQUIPMENT_RACIAL_RULES, POINT_BUY_COSTS, ability_modifier, prepared_spell_limit, proficiency_bonus,
+    weapon_attack_ability,
+)
+from build_validation import (
+    BuildIssue, validate_abilities, validate_identity, validate_level_chain,
+    validate_required_controls,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -154,7 +162,6 @@ WILD_SHAPE_STRENGTH = {
     "Sabre-Toothed Tiger": 18, "Dilophosaurus": 19, "Air Myrmidon": 18,
     "Earth Myrmidon": 18, "Fire Myrmidon": 13, "Water Myrmidon": 18,
 }
-POINT_BUY_COSTS = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
 FIXED_FEAT_ABILITIES = {
     "Actor": ("Charisma", 1), "Durable": ("Constitution", 1),
     "Heavily Armoured": ("Strength", 1), "Heavy Armour Master": ("Strength", 1),
@@ -370,21 +377,9 @@ def metric_movement(value: str) -> str:
     return f"{match.group(1)} m" if match else "—"
 
 
-def ability_modifier(score: int) -> int:
-    return (score - 10) // 2
-
-
 def spellcasting_ability_name(value: str) -> str:
     matches = [(match.start(), ability) for ability in ABILITIES if (match := re.search(rf"\b{ability}\b", value or "", re.IGNORECASE))]
     return min(matches)[1] if matches else "None"
-
-
-def proficiency_bonus(level: int) -> int:
-    if level >= 9:
-        return 4
-    if level >= 5:
-        return 3
-    return 2
 
 
 def feat_choice_dropdown(level: int, field: str, label: str, options, multi: bool = False, value=None):
@@ -1180,11 +1175,7 @@ def spell_profile(class_name: str, class_level: int, ability_data, feat_effects,
         ability = spellcasting_ability_name(next(item for item in CLASSES if item["class"] == class_name)["spellcasting_ability"])
         spell_list = class_name
     score = final_ability_scores(ability_data, feat_effects, equipment_effects)[ability]
-    prepared_limit = 0
-    if class_name in {"Cleric", "Druid", "Wizard"}:
-        prepared_limit = max(1, class_level + ability_modifier(score))
-    elif class_name == "Paladin" and class_level >= 2:
-        prepared_limit = max(1, class_level + ability_modifier(score))
+    prepared_limit = prepared_spell_limit(class_name, class_level, score)
     return {
         "level": class_level, "max_spell_level": max_spell_level, "cantrips": cantrip_limit,
         "learned": learned_limit, "prepared": prepared_limit, "ability": ability,
@@ -1545,6 +1536,13 @@ app.layout = html.Div(
             ),
             dcc.Store(id="pending-build-overwrite", storage_type="memory"),
         ], className="account-panel", style={} if AUTH_ENABLED else {"display": "none"}),
+        html.Aside([
+            html.Div([
+                html.Div([html.P("BUILD STATUS", className="eyebrow"), html.H2(id="build-validation-title")]),
+                html.Button("Hide", id="toggle-build-validation", n_clicks=0, className="validation-toggle"),
+            ], className="validation-heading"),
+            html.Div(id="build-validation-items", role="status", **{"aria-live": "polite"}),
+        ], id="build-validation-panel", className="build-validation-panel"),
         dcc.Store(id="character-store", storage_type="session"),
         dcc.Store(id="pending-build-load", storage_type="memory"),
         dcc.Store(
@@ -2136,6 +2134,122 @@ def build_notice(message: str):
     """Return a fresh toast node so repeated notices always animate."""
     nonce = str(time.time_ns())
     return html.Div(message, id=f"build-toast-{nonce}", key=nonce, className="build-toast-card")
+
+
+VALIDATION_TABS = {
+    "Background": "background-tab", "Abilities": "abilities-tab", "Leveling": "leveling-tab",
+    "Spells": "spells-tab", "Equipment": "equipment-tab",
+}
+
+
+@callback(
+    Output("build-validation-title", "children"), Output("build-validation-items", "children"),
+    Input("race-dropdown", "value"), Input("subrace-dropdown", "value"), Input("background-dropdown", "value"),
+    Input("human-versatility-skill", "value"), Input("feat-effects-store", "data"),
+    Input("abilities-store", "data"), Input({"type": "level-class", "level": ALL}, "value"),
+    Input({"type": "level-subclass", "level": ALL}, "value"), Input({"type": "level-feat", "level": ALL}, "value"),
+    Input({"type": "feat-choice", "level": ALL, "field": ALL}, "value"),
+    Input({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "value"),
+    Input({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"),
+    Input("skill-state-store", "data"),
+    State({"type": "feat-choice", "level": ALL, "field": ALL}, "id"),
+    State({"type": "class-feature-choice", "level": ALL, "feature": ALL}, "id"),
+    State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
+)
+def validate_current_build(race, subrace, background, human_skill, feat_effects, ability_data, classes, subclasses, feats,
+                           feat_choice_values, class_choice_values, spell_values, skill_state,
+                           feat_choice_ids, class_choice_ids, spell_ids):
+    races_with_subraces = {row["race"] for row in RACES if row.get("subrace")}
+    issues = []
+    issues.extend(validate_identity(race, subrace, background, races_with_subraces))
+    issues.extend(validate_abilities(ability_data))
+    issues.extend(validate_level_chain(classes))
+
+    counts, chosen_subclasses = Counter(), {}
+    for index, class_name in enumerate(classes or []):
+        if not class_name:
+            break
+        counts[class_name] += 1
+        selected_here = (subclasses or [None] * 12)[index] if index < len(subclasses or []) else None
+        if selected_here:
+            chosen_subclasses[class_name] = selected_here
+        class_row = next(row for row in CLASSES if row["class"] == class_name)
+        options = class_row["subclasses"].split("; ")
+        unlocks = []
+        for option in options:
+            first = next((row for row in CLASS_PROGRESSIONS[class_name] if meaningful(row.get(snake_case(option), ""))), None)
+            unlocks.append(int(first["level"]) if first else 1)
+        unlock_level = min(unlocks) if unlocks else 1
+        if counts[class_name] >= unlock_level and class_name not in chosen_subclasses:
+            issues.append(BuildIssue("Leveling", f"Choose the {class_name} subclass unlocked at {class_name} level {unlock_level}."))
+        progression = CLASS_PROGRESSIONS[class_name][counts[class_name] - 1]
+        subclass_text = progression.get(snake_case(chosen_subclasses.get(class_name)), "") if chosen_subclasses.get(class_name) else ""
+        if re.search(r"\bFeat\b", f"{progression.get('class_features', '')} {subclass_text}", re.IGNORECASE):
+            if index >= len(feats or []) or not feats[index]:
+                issues.append(BuildIssue("Leveling", f"Choose the feat available at character level {index + 1}."))
+
+    issues.extend(validate_required_controls(feat_choice_values, feat_choice_ids, "Leveling"))
+    issues.extend(validate_required_controls(class_choice_values, class_choice_ids, "Leveling"))
+    issues.extend(validate_required_controls(
+        spell_values, spell_ids, "Spells", {"replace_from", "replace_to"},
+    ))
+    background_row = next((row for row in BACKGROUNDS if row["background"] == background), None)
+    race_row = next((row for row in RACES if row["race"] == race), None)
+    subrace_row = next((row for row in RACES if row["race"] == race and row.get("subrace") == subrace), None)
+    proficient = skills_mentioned(
+        background_row.get("skill_proficiencies", "") if background_row else "",
+        race_row.get("race_proficiencies", "") if race_row else "",
+        subrace_row.get("subrace_proficiencies", "") if subrace_row else "",
+    )
+    if race == "Human" and human_skill:
+        proficient.add(human_skill)
+    proficient.update((feat_effects or {}).get("skills", []))
+    expertise = set((feat_effects or {}).get("expertise", []))
+    for value, item_id in zip(class_choice_values or [], class_choice_ids or []):
+        selected = value if isinstance(value, list) else ([value] if value else [])
+        if item_id.get("feature") in {"Skill Proficiencies", "Knowledge Domain Expertise"}:
+            proficient.update(selected)
+        if item_id.get("feature") in {"Expertise", "Knowledge Domain Expertise"}:
+            expertise.update(selected)
+    if race == "Gnome" and subrace == "Rock Gnome":
+        proficient.add("History")
+        expertise.add("History")
+    invalid_expertise = sorted(expertise - proficient)
+    if invalid_expertise:
+        issues.append(BuildIssue("Leveling", f"Expertise requires proficiency first: {', '.join(invalid_expertise)}.", "error"))
+
+    if not issues:
+        return "Build complete", html.P("All required character choices are complete.", className="validation-complete")
+    grouped = []
+    for section in VALIDATION_TABS:
+        section_issues = [issue for issue in issues if issue.section == section]
+        if not section_issues:
+            continue
+        grouped.append(html.Section([
+            html.Button(section, id={"type": "validation-nav", "tab": VALIDATION_TABS[section]}, n_clicks=0,
+                        className="validation-section-link", title=f"Open the {section} tab"),
+            html.Ul([html.Li(issue.message, className=f"validation-issue validation-issue--{issue.severity}") for issue in section_issues]),
+        ], className="validation-section"))
+    return f"{len(issues)} choice{'s' if len(issues) != 1 else ''} need attention", grouped
+
+
+@callback(
+    Output("build-validation-items", "style"), Output("toggle-build-validation", "children"),
+    Input("toggle-build-validation", "n_clicks"),
+)
+def toggle_validation_panel(clicks):
+    collapsed = bool((clicks or 0) % 2)
+    return ({"display": "none"} if collapsed else {}), ("Show" if collapsed else "Hide")
+
+
+@callback(
+    Output("builder-tabs", "value"), Input({"type": "validation-nav", "tab": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def navigate_from_validation(_clicks):
+    if not any(_clicks or []):
+        return no_update
+    return ctx.triggered_id.get("tab", no_update) if isinstance(ctx.triggered_id, dict) else no_update
 
 
 @callback(
@@ -4214,17 +4328,16 @@ def equipment_effect_data(equipment_ids, race=None, subrace=None) -> dict:
             lightning_items.append(item)
         if re.search(r"Reverberation", special, re.IGNORECASE):
             reverberation_items.append(item)
-        if item == "Nimblefinger Gloves":
-            dexterity_bonus = 2 if "gnome" in ancestry else 1 if any(name in ancestry for name in ("halfling", "dwarf", "duergar")) else 0
-            if dexterity_bonus:
-                adjustments.append({"ability": "Dexterity", "kind": "add", "value": dexterity_bonus, "cap": 30, "source": item})
-        if item == "Circlet of Psionic Revenge" and "githyanki" in ancestry:
-            for ability in ("Intelligence", "Wisdom", "Charisma"):
-                saving_throw_bonuses[ability] += 1
-        if item == "Aberration Hunters' Amulet" and "githyanki" in ancestry:
-            saving_throw_advantages.append({"abilities": ["Intelligence"], "source": item, "condition": "Advantage"})
-        if item == "Silver Sword of the Astral Plane" and "githyanki" in ancestry:
-            saving_throw_advantages.append({"abilities": ["Intelligence", "Wisdom", "Charisma"], "source": item, "condition": "Advantage"})
+        racial_rules = EQUIPMENT_RACIAL_RULES.get(item, {})
+        matched_rule = next((rule for race_key, rule in racial_rules.items() if race_key in ancestry), None)
+        if matched_rule:
+            if matched_rule.get("ability"):
+                adjustments.append({**matched_rule, "source": item})
+            saving_throw_bonuses.update(matched_rule.get("saving_throw_bonus", {}))
+            if matched_rule.get("saving_throw_advantage"):
+                saving_throw_advantages.append({
+                    "abilities": matched_rule["saving_throw_advantage"], "source": item, "condition": "Advantage",
+                })
         for ability in ABILITIES:
             fixed_patterns = [
                 rf"set(?:s)? the wearer's {ability} score to\s*(\d+)",
@@ -4440,7 +4553,11 @@ def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_leve
     monk_weapon = monk_level > 0 and "heavy" not in properties and "two-handed" not in properties
     hexed_weapon = bool(active_features & {"Hexed Weapon", "Pact Weapon"}) and slot == "melee main" and not thrown
     charge_bound = row.get("item") == "Charge-Bound Warhammer" and slot == "melee main" and not thrown and bool(active_features & {"Hexed Weapon", "Pact Weapon", "Bound Weapon"})
-    ability = "Charisma" if hexed_weapon else "Dexterity" if ranged or (finesse or monk_weapon) and modifiers["Dexterity"] > modifiers["Strength"] else "Strength"
+    ability = weapon_attack_ability(
+        ranged=ranged, finesse=finesse, monk_weapon=monk_weapon,
+        strength_modifier=modifiers["Strength"], dexterity_modifier=modifiers["Dexterity"],
+        pact_weapon=hexed_weapon,
+    )
     add_modifier = (thrown or "off" not in slot or "Two-Weapon Fighting" in styles) and not row.get("improvised_throw")
     flat = modifiers[ability] if add_modifier else 0
     if "Rage" in active_features and (row["category"] == "melee" or thrown):
@@ -4470,8 +4587,9 @@ def weapon_damage_stats(row, modifiers, styles, slot, offhand_present, monk_leve
     return (stats[0] + flat, stats[1] + flat, stats[2] + flat), expression, ability, flat
 
 
-def optimizer_result_card(sequence, total, limitations, mode, inflicted_conditions=None):
+def optimizer_result_card(sequence, total, limitations, mode, inflicted_conditions=None, decision_explanations=None):
     inflicted_conditions = inflicted_conditions or []
+    decision_explanations = decision_explanations or []
     return html.Div([
         html.Div([
             html.Div([html.Span("Minimum", className="optimizer-total-label"), html.Strong(f"{total[0]:g}")]),
@@ -4483,6 +4601,18 @@ def optimizer_result_card(sequence, total, limitations, mode, inflicted_conditio
             html.Li([html.Strong(step["name"]), html.Span(f" — {step['min']:g}–{step['max']:g}, mean {step['mean']:.1f}"), html.Small(step.get("detail", ""))])
             for step in sequence
         ], className="optimizer-sequence"),
+        html.Details([
+            html.Summary(f"Why this turn was selected ({len(decision_explanations)} alternatives compared)"),
+            html.P("Candidates are ranked by immediate mean damage assuming their attack rolls hit and required saving throws fail. Limited-resource candidates are included only when that option is enabled.", className="condition-help"),
+            html.Div([
+                html.Div([
+                    html.Strong(item["name"]),
+                    html.Span(f"{item['kind']} · {item['minimum']:g}–{item['maximum']:g} · mean {item['mean']:.1f}"),
+                    html.Small(item["reason"]),
+                ], className=f"optimizer-decision {'optimizer-decision--selected' if item['selected'] else ''}")
+                for item in decision_explanations
+            ], className="optimizer-decision-list"),
+        ], className="optimizer-explanation"),
         html.Div([
             html.H4("Possible conditions inflicted"),
             html.Div([
@@ -4598,7 +4728,11 @@ def weapon_attack_description(row, slot, modifiers, proficiency, styles, offhand
     flexible_ability = finesse or monk_weapon
     hexed_weapon = bool(active_features & {"Hexed Weapon", "Pact Weapon"}) and slot == "melee main" and not thrown
     charge_bound = row.get("item") == "Charge-Bound Warhammer" and slot == "melee main" and not thrown and bool(active_features & {"Hexed Weapon", "Pact Weapon", "Bound Weapon"})
-    ability = "Charisma" if hexed_weapon else "Dexterity" if ranged else ("Dexterity" if flexible_ability and modifiers["Dexterity"] > modifiers["Strength"] else "Strength")
+    ability = weapon_attack_ability(
+        ranged=ranged, finesse=finesse, monk_weapon=monk_weapon,
+        strength_modifier=modifiers["Strength"], dexterity_modifier=modifiers["Dexterity"],
+        pact_weapon=hexed_weapon,
+    )
     proficient = proficient or hexed_weapon
     modifier = modifiers[ability]
     damage = row.get("damage", "1")
@@ -5767,8 +5901,36 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
         mode += f"; active: {', '.join(sorted(active_features))}"
     inflicted_conditions = possible_conditions_for_sequence(sequence, equipped_rows, active_features)
     inflicted_conditions = list({(item["condition"], item["source"]): item for item in inflicted_conditions + equipment_conditions}.values())
+    selected_action_names = {step["name"].split(": ", 1)[-1] for step in sequence if step["name"].startswith("Action")}
+    selected_bonus_names = {step["name"].split(": ", 1)[-1] for step in sequence if step["name"].startswith("Bonus Action")}
+    best_action_mean = max((item["stats"][2] for item in action_candidates), default=0)
+    best_bonus_mean = max((item["stats"][2] for item in bonus_candidates), default=0)
+
+    def decision_rows(candidates, kind, selected_names, best_mean):
+        rows = []
+        for candidate in sorted(candidates, key=lambda item: item["stats"][2], reverse=True)[:8]:
+            components = candidate.get("components") or []
+            selected = candidate["name"] in selected_names or any(component.get("name") in selected_names for component in components)
+            difference = best_mean - candidate["stats"][2]
+            if selected:
+                reason = "Selected because it has the highest currently eligible immediate mean damage for this action type."
+            elif candidate.get("max_per_turn") == 1:
+                reason = f"Available at most once per turn; its mean is {difference:.1f} below the highest-ranked candidate."
+            else:
+                reason = f"Not selected because its immediate mean is {difference:.1f} below the highest-ranked candidate."
+            rows.append({
+                "name": candidate["name"], "kind": kind, "minimum": candidate["stats"][0],
+                "maximum": candidate["stats"][1], "mean": candidate["stats"][2],
+                "selected": selected, "reason": reason,
+            })
+        return rows
+
+    decision_explanations = (
+        decision_rows(action_candidates, "Action", selected_action_names, best_action_mean)
+        + decision_rows(bonus_candidates, "Bonus Action", selected_bonus_names, best_bonus_mean)
+    )
     return html.Div([
-        optimizer_result_card(sequence, total, limitations, mode, inflicted_conditions),
+        optimizer_result_card(sequence, total, limitations, mode, inflicted_conditions, decision_explanations),
         crit_result_card(sequence, crit_sequence, max(2, threshold), advantage, crit_sources, crit_riders),
     ], className="optimizer-results-stack")
 
