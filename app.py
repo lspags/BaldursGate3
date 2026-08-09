@@ -1234,6 +1234,10 @@ def resolved_spell_selections(values, ids) -> dict[str, dict[str, list[str]]]:
         selected = selected[:limit]
         if category in {"cantrips", "known", "prepared"}:
             class_result[category].extend(spell for spell in selected if spell not in class_result[category])
+        elif category == "prepared_snapshot":
+            # Prepared casters may completely revise their loadout at a new
+            # class level. The most recent snapshot is the active one.
+            class_result["prepared"] = list(dict.fromkeys(selected))
         elif category == "secrets":
             for spell in selected:
                 spell_row = next((row for row in SPELLS if row["spell"] == spell), None)
@@ -1399,6 +1403,12 @@ def level_spell_builder(level_classes, level_subclasses, ability_data, feat_effe
                 class_name, f"arcanum|{character_level}|mystic-arcanum",
                 "Mystic Arcanum - choose one level 6 spell", [spell_option(row) for row in rows], 1,
             ))
+        if class_name == "Paladin" and class_level >= 2 and profile["prepared"]:
+            rows = spell_rows_for_pool(class_name, subclass, "class", profile["max_spell_level"])
+            fields.append(spell_choice_field(
+                class_name, f"prepared_snapshot|{character_level}|class",
+                f"Prepared spells at Paladin level {class_level}", [spell_option(row) for row in rows], profile["prepared"],
+            ))
 
         if profile["known_caster"] and previous_learned:
             fields.extend([
@@ -1418,7 +1428,7 @@ def level_spell_builder(level_classes, level_subclasses, ability_data, feat_effe
     for class_name, class_level in final_counts.items():
         subclass = chosen_subclasses.get(class_name)
         profile = spell_profile(class_name, class_level, ability_data, feat_effects, equipment_effects, subclass)
-        if not profile or not profile["prepared"]:
+        if not profile or not profile["prepared"] or class_name == "Paladin":
             continue
         rows = spell_rows_for_pool(class_name, subclass, "class", profile["max_spell_level"])
         cards.append(html.Section([
@@ -2624,6 +2634,28 @@ def restore_dynamic_build_choices(payload, _feat_children, _class_children, _spe
         if "|" in (record.get("id") or {}).get("kind", "")
         or (record.get("id") or {}).get("kind", "") not in {"cantrips", "known", "prepared"}
     ]
+    # Paladin preparation used to be stored in one final-state selector.
+    # Restore it into the latest mounted level snapshot for older saves.
+    paladin_current = next((
+        record for record in spell_records
+        if (record.get("id") or {}).get("class") == "Paladin"
+        and (record.get("id") or {}).get("kind") == "prepared|0|current"
+    ), None)
+    if paladin_current:
+        migrated_spell_records.remove(paladin_current)
+        paladin_targets = [
+            item_id for item_id in (spell_ids or [])
+            if item_id.get("class") == "Paladin"
+            and parse_spell_choice_kind(item_id.get("kind", ""))[0] == "prepared_snapshot"
+        ]
+        if paladin_targets:
+            latest_target = max(paladin_targets, key=lambda item_id: parse_spell_choice_kind(item_id["kind"])[1])
+            migrated_spell_records.append({
+                "id": latest_target,
+                "value": list(paladin_current.get("value") or [])[:int(latest_target.get("limit", 99))],
+            })
+        else:
+            migrated_spell_records.append(paladin_current)
     for record in spell_records:
         legacy_id = record.get("id") or {}
         legacy_kind = legacy_id.get("kind", "")
@@ -4004,7 +4036,7 @@ def level_spell_option_sets(values, level_classes, level_subclasses, class_choic
     resolved = resolved_spell_selections(values, ids)
     all_selected = {
         spell for value, item_id in zip(values, ids)
-        if parse_spell_choice_kind(item_id.get("kind", ""))[0] != "replace_from"
+        if parse_spell_choice_kind(item_id.get("kind", ""))[0] not in {"replace_from", "prepared_snapshot"}
         for spell in (value or [])
     }
     granted_by_class = class_granted_spells(level_classes, level_subclasses, class_choice_values)
@@ -4045,7 +4077,7 @@ def level_spell_option_sets(values, level_classes, level_subclasses, class_choic
             candidates = spell_rows_for_pool(class_name, subclass, normalized_pool, max_spell_level)
 
         unavailable = (all_selected - own_selected) | all_granted
-        if category == "prepared":
+        if category in {"prepared", "prepared_snapshot"}:
             unavailable -= set(resolved.get(class_name, {}).get("known", []))
         option_sets.append([spell_option(row) for row in candidates if row["spell"] not in unavailable or row["spell"] in own_selected])
     return option_sets
