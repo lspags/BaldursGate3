@@ -922,6 +922,18 @@ def class_feature_tooltips(features, inline_descriptions=None):
                 f"Draconic Ancestry: {damage_type}. Grants {spell}; at Sorcerer level 6, "
                 f"the ancestry also powers {damage_type} resistance and damage bonuses."
             )
+        if not override_description and feature in DRACONIC_ANCESTRIES:
+            damage_type = re.search(r"\(([^)]+)\)", feature)
+            override_description = (
+                f"Grants {DRACONIC_ANCESTRIES[feature]}. At Sorcerer level 6, spells dealing "
+                f"{damage_type.group(1) if damage_type else 'your ancestry damage type'} damage add your Charisma modifier, "
+                "and spending a Sorcery Point can grant resistance to that damage type."
+            )
+        land_match = re.fullmatch(r"(.+) \(level ([2-5])\)", feature)
+        if not override_description and land_match:
+            land, spell_level = land_match.group(1), int(land_match.group(2))
+            spells = LAND_CIRCLE_SPELLS.get(spell_level, {}).get(land, [])
+            override_description = f"Always prepares the level {spell_level} Circle Spells: {', '.join(spells)}."
         expertise_description = ""
         if feature.startswith("Expertise: "):
             expertise_skill = feature.split(":", 1)[1].strip()
@@ -1218,10 +1230,18 @@ def resolved_spell_selections(values, ids) -> dict[str, dict[str, list[str]]]:
         category, character_level, pool = parse_spell_choice_kind(item_id.get("kind", ""))
         events.append((character_level, category, pool, item_id["class"], list(value or []), int(item_id.get("limit", 99))))
     for character_level, category, pool, class_name, selected, limit in sorted(events, key=lambda event: (event[0], event[1] == "replace_to")):
-        class_result = result.setdefault(class_name, {"cantrips": [], "known": [], "prepared": [], "replace_from": {}})
+        class_result = result.setdefault(class_name, {"cantrips": [], "known": [], "prepared": [], "arcanum": [], "replace_from": {}})
         selected = selected[:limit]
         if category in {"cantrips", "known", "prepared"}:
             class_result[category].extend(spell for spell in selected if spell not in class_result[category])
+        elif category == "secrets":
+            for spell in selected:
+                spell_row = next((row for row in SPELLS if row["spell"] == spell), None)
+                destination = "cantrips" if spell_row and spell_row["level"] == "C" else "known"
+                if spell not in class_result[destination]:
+                    class_result[destination].append(spell)
+        elif category == "arcanum":
+            class_result["arcanum"].extend(spell for spell in selected if spell not in class_result["arcanum"])
         elif category == "replace_from":
             class_result["replace_from"][character_level] = selected[0] if selected else None
         elif category == "replace_to" and selected:
@@ -1254,8 +1274,67 @@ SUBCLASS_SPELL_ACQUISITIONS = {
     },
 }
 
+MAGICAL_SECRETS_SPELLS = {
+    "Bone Chill", "Eldritch Blast", "Fire Bolt", "Ray of Frost", "Sacred Flame",
+    "Armour of Agathys", "Bless", "Chromatic Orb", "Command", "Entangle", "False Life",
+    "Guiding Bolt", "Hellish Rebuke", "Hex", "Hunter's Mark", "Ice Knife", "Magic Missile",
+    "Sanctuary", "Thunderous Smite", "Arcane Lock", "Blur", "Darkness", "Darkvision",
+    "Misty Step", "Pass Without Trace", "Ray of Enfeeblement", "Scorching Ray", "Spike Growth",
+    "Spiritual Weapon", "Web", "Animate Dead", "Call Lightning", "Counterspell",
+    "Crusader's Mantle", "Daylight", "Fireball", "Gaseous Form", "Grant Flight", "Haste",
+    "Hunger of Hadar", "Lightning Bolt", "Mass Healing Word", "Remove Curse", "Revivify",
+    "Sleet Storm", "Slow", "Spirit Guardians", "Vampiric Touch", "Warden of Vitality",
+    "Banishment", "Blight", "Death Ward", "Dominate Beast", "Fire Shield", "Guardian of Faith",
+    "Ice Storm", "Wall of Fire", "Banishing Smite", "Cone of Cold", "Conjure Elemental",
+    "Contagion", "Wall of Stone",
+}
+
+DRACONIC_ANCESTRIES = {
+    "Black (Acid)": "Grease", "Blue (Lightning)": "Witch Bolt", "Brass (Fire)": "Sleep",
+    "Bronze (Lightning)": "Fog Cloud", "Copper (Acid)": "Tasha's Hideous Laughter",
+    "Gold (Fire)": "Disguise Self", "Green (Poison)": "Ray of Sickness",
+    "Red (Fire)": "Burning Hands", "Silver (Cold)": "Feather Fall",
+    "White (Cold)": "Armour of Agathys",
+}
+
+LAND_CIRCLE_CANTRIPS = ["Guidance", "Poison Spray", "Produce Flame", "Resistance (Cantrip)", "Shillelagh", "Thorn Whip"]
+LAND_CIRCLE_SPELLS = {
+    2: {
+        "Arctic": ["Hold Person", "Spike Growth"], "Coast": ["Misty Step", "Mirror Image"],
+        "Desert": ["Blur", "Silence"], "Forest": ["Barkskin", "Hold Person"],
+        "Grassland": ["Invisibility", "Pass Without Trace"], "Mountain": ["Mirror Image", "Spike Growth"],
+        "Swamp": ["Melf's Acid Arrow", "Darkness"], "Underdark": ["Misty Step", "Web"],
+    },
+    3: {
+        "Arctic": ["Haste", "Sleet Storm"], "Coast": ["Sleet Storm", "Call Lightning"],
+        "Desert": ["Hypnotic Pattern", "Protection from Energy"], "Forest": ["Call Lightning", "Plant Growth"],
+        "Grassland": ["Daylight", "Haste"], "Mountain": ["Lightning Bolt", "Grant Flight"],
+        "Swamp": ["Stinking Cloud", "Vampiric Touch"], "Underdark": ["Gaseous Form", "Stinking Cloud"],
+    },
+    4: {
+        "Arctic": ["Freedom of Movement", "Ice Storm"], "Coast": ["Confusion", "Freedom of Movement"],
+        "Desert": ["Blight", "Wall of Fire"], "Forest": ["Freedom of Movement", "Grasping Vine"],
+        "Grassland": ["Freedom of Movement", "Polymorph"], "Mountain": ["Dominate Beast", "Stoneskin"],
+        "Swamp": ["Blight", "Grasping Vine"], "Underdark": ["Greater Invisibility", "Dominate Beast"],
+    },
+    5: {
+        "Arctic": ["Cone of Cold", "Conjure Elemental"], "Coast": ["Conjure Elemental", "Greater Restoration"],
+        "Desert": ["Conjure Elemental", "Insect Plague"], "Forest": ["Mass Cure Wounds", "Conjure Elemental"],
+        "Grassland": ["Greater Restoration", "Insect Plague"], "Mountain": ["Conjure Elemental", "Wall of Stone"],
+        "Swamp": ["Insect Plague", "Cloudkill"], "Underdark": ["Cloudkill", "Insect Plague"],
+    },
+}
+
 
 def spell_rows_for_pool(class_name: str, subclass: str | None, pool: str, max_spell_level: int, cantrips=False):
+    if pool.startswith("magical-secrets"):
+        maximum = int(pool.rsplit("-", 1)[1])
+        return [
+            row for row in SPELLS if row["spell"] in MAGICAL_SECRETS_SPELLS
+            and (row["level"] == "C" or row["level"].isdigit() and int(row["level"]) <= maximum)
+        ]
+    if pool == "mystic-arcanum":
+        return [row for row in SPELLS if row["level"] == "6" and "Warlock" in row["classes"].split("; ")]
     spell_list = class_name
     if pool == "wizard":
         spell_list = "Wizard"
@@ -1306,6 +1385,20 @@ def level_spell_builder(level_classes, level_subclasses, ability_data, feat_effe
                 rows = spell_rows_for_pool(class_name, subclass, "class", profile["max_spell_level"])
                 label = f"New {'spells learned' if class_name == 'Wizard' else 'spells known'} ({learned_delta})"
                 fields.append(spell_choice_field(class_name, f"known|{character_level}|class", label, [spell_option(row) for row in rows], learned_delta))
+
+        if class_name == "Bard" and (class_level == 10 or class_level == 6 and subclass == "College of Lore"):
+            maximum = 5 if class_level == 10 else 3
+            rows = spell_rows_for_pool(class_name, subclass, f"magical-secrets-{maximum}", maximum)
+            fields.append(spell_choice_field(
+                class_name, f"secrets|{character_level}|magical-secrets-{maximum}",
+                f"Magical Secrets - choose 2 spells up to level {maximum}", [spell_option(row) for row in rows], 2,
+            ))
+        if class_name == "Warlock" and class_level == 11:
+            rows = spell_rows_for_pool(class_name, subclass, "mystic-arcanum", 6)
+            fields.append(spell_choice_field(
+                class_name, f"arcanum|{character_level}|mystic-arcanum",
+                "Mystic Arcanum - choose one level 6 spell", [spell_option(row) for row in rows], 1,
+            ))
 
         if profile["known_caster"] and previous_learned:
             fields.extend([
@@ -2134,7 +2227,7 @@ def team_member_card(payload, slot):
     )
     spells = [
         spell for class_state in spell_state.values()
-        for category in ("cantrips", "known", "prepared")
+        for category in ("cantrips", "known", "prepared", "arcanum")
         for spell in class_state.get(category, [])
     ]
     attacks = []
@@ -3013,7 +3106,15 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             style = next((row for row in FIGHTING_STYLES if row["fighting_style"] == value), None)
             feature_row = next((row for row in CLASS_FEATURES if row["feature"].lower() == value.lower()), None)
             invocation_description = ELDRITCH_INVOCATION_DESCRIPTIONS.get(value, "")
-            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or invocation_description or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
+            land_match = re.fullmatch(r"(.+) \(level ([2-5])\)", value)
+            land_description = ""
+            if land_match:
+                land, spell_level = land_match.group(1), int(land_match.group(2))
+                land_description = f"Always prepares: {', '.join(LAND_CIRCLE_SPELLS.get(spell_level, {}).get(land, []))}."
+            ancestry_description = f"Grants {DRACONIC_ANCESTRIES[value]}." if value in DRACONIC_ANCESTRIES else ""
+            spell_row = next((row for row in SPELLS if row["spell"] == value), None)
+            spell_description = spell_row.get("description", "") if spell_row else ""
+            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or invocation_description or ancestry_description or land_description or spell_description or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
             if value in MONK_DISCIPLINE_DAMAGE:
                 expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[value]
                 description += f" Damage: {expression} {damage_type}. Cost: {ki_cost} Ki Point{'s' if ki_cost != 1 else ''}."
@@ -3127,6 +3228,22 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             limit = 2 if class_level == 2 else 1
             metamagic_options = METAMAGIC_BASIC if class_level == 2 else METAMAGIC_BASIC + METAMAGIC_ADVANCED
             controls.append(choice_control(level, "Metamagic", f"Metamagic ({limit})", metamagic_options, True, limit))
+        if class_name == "Sorcerer" and class_level == 1 and subclass == "Draconic Bloodline":
+            controls.append(choice_control(
+                level, "Draconic Ancestry", "Draconic Ancestry", list(DRACONIC_ANCESTRIES),
+            ))
+        if class_name == "Druid" and subclass == "Circle of the Land":
+            if class_level == 2:
+                controls.append(choice_control(
+                    level, "Circle of the Land Cantrip", "Additional Druid cantrip", LAND_CIRCLE_CANTRIPS,
+                ))
+            land_spell_level = {3: 2, 5: 3, 7: 4, 9: 5}.get(class_level)
+            if land_spell_level:
+                land_choices = [f"{land} (level {land_spell_level})" for land in LAND_CIRCLE_SPELLS[land_spell_level]]
+                controls.append(choice_control(
+                    level, f"Circle Spells {land_spell_level}",
+                    f"Circle land for level {land_spell_level} spells", land_choices,
+                ))
         if class_name == "Ranger" and subclass == "Hunter" and class_level == 3:
             controls.append(choice_control(level, "Hunter's Prey", "Hunter's Prey", ["Colossus Slayer", "Giant Killer", "Horde Breaker"]))
         if class_name == "Ranger" and subclass == "Hunter" and class_level == 7:
@@ -3833,6 +3950,19 @@ def class_granted_spells(level_classes, level_subclasses, class_choice_values):
     for choice, spell in ranger_grants.items():
         if choice in selected_choices:
             granted.setdefault("Ranger", []).append(spell)
+    for choice, spell in DRACONIC_ANCESTRIES.items():
+        if choice in selected_choices:
+            granted.setdefault("Sorcerer", []).append(spell)
+    for choice in selected_choices:
+        if choice in LAND_CIRCLE_CANTRIPS:
+            granted.setdefault("Druid", []).append(choice)
+        land_match = re.fullmatch(r"(.+) \(level ([2-5])\)", choice)
+        if land_match:
+            land, spell_level = land_match.group(1), int(land_match.group(2))
+            granted.setdefault("Druid", []).extend(LAND_CIRCLE_SPELLS.get(spell_level, {}).get(land, []))
+    class_counts = Counter(value for value in level_classes or [] if value)
+    if class_counts.get("Bard", 0) >= 6 and ("Bard", "College of Glamour") in selected_subclasses:
+        granted.setdefault("Bard", []).append("Command")
     return {class_name: list(dict.fromkeys(spells)) for class_name, spells in granted.items() if spells}
 
 
@@ -5183,7 +5313,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     resolved_spells = resolved_spell_selections(spell_values, spell_ids)
     selections = {
         category: [spell for class_spells in resolved_spells.values() for spell in class_spells.get(category, [])]
-        for category in ("cantrips", "known", "prepared")
+        for category in ("cantrips", "known", "prepared", "arcanum")
     }
     equipped_ids = [melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
                     handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id]
@@ -5196,7 +5326,7 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
     star_map_guiding_bolt = counts.get("Druid", 0) >= 2 and ("Druid", "Circle of the Stars") in selected_subclasses
     spell_names = list(dict.fromkeys(
         selections.get("cantrips", [])
-        + (selections.get("known", []) + selections.get("prepared", []) if limited else [])
+        + (selections.get("known", []) + selections.get("prepared", []) + selections.get("arcanum", []) if limited else [])
         + equipment_spell_names
         + (["Guiding Bolt"] if limited and star_map_guiding_bolt else [])
     ))
@@ -5233,11 +5363,12 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             continue
         is_cantrip = row["level"] == "C"
         is_equipment_spell = spell_name in equipment_spell_sources
+        is_mystic_arcanum = spell_name in selections.get("arcanum", [])
         if not is_cantrip and not limited:
             continue
         spell_resource_text = (
             f"Granted by {', '.join(equipment_spell_sources[spell_name])}; uses the item's recharge."
-            if is_equipment_spell else "Uses a spell slot." if not is_cantrip else "Cantrip; unlimited use."
+            if is_equipment_spell else "Mystic Arcanum; once per Long Rest without a Pact Magic slot." if is_mystic_arcanum else "Uses a spell slot." if not is_cantrip else "Cantrip; unlimited use."
         )
         if spell_name == "Guiding Bolt" and star_map_guiding_bolt:
             star_map_uses = 4 if level >= 9 else 3 if level >= 5 else 2
@@ -5767,10 +5898,11 @@ def render_sheet_spells(values, level_classes, level_subclasses, class_choice_va
         cantrips = selections.get(class_name, {}).get("cantrips", [])
         known = selections.get(class_name, {}).get("known", [])
         prepared = selections.get(class_name, {}).get("prepared", [])
+        arcanum = selections.get(class_name, {}).get("arcanum", [])
         granted = granted_by_class.get(class_name, [])
         prepared_display = [spell for spell in prepared if class_name != "Wizard" or spell in known]
         usable_levelled = prepared_display if class_name in PREPARED_CASTERS else known
-        usable = list(dict.fromkeys(cantrips + usable_levelled + granted))
+        usable = list(dict.fromkeys(cantrips + usable_levelled + arcanum + granted))
         rows = []
         if granted:
             rows.append(html.Div([html.Span("Granted", className="summary-label"), html.Span(spell_tooltip_list(granted, spell_attack_bonus, casting_ability))], className="summary-row"))
