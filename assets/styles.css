@@ -491,6 +491,11 @@ body {
 .team-item-location-checklist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .team-item-members { color: var(--gold-bright); font-size: .7rem; font-weight: 800; }
 .team-message:not(:empty) { padding: 11px 13px; color: var(--gold-bright); background: rgba(20,18,18,.75); border-left: 3px solid var(--gold); }
+.spell-level-card { border-left: 3px solid rgba(209,173,97,.72); }
+.spell-prepared-card { border-color: rgba(124,153,178,.58); }
+.combat-choice-history { display: grid; gap: 10px; }
+.combat-choice-level-row { display: grid; gap: 5px; padding: 10px 12px; background: rgba(15,15,18,.38); border: 1px solid rgba(209,173,97,.2); border-radius: 6px; }
+.combat-choice-level-row strong { color: var(--gold-bright); }
 .build-message:not(:empty) {
   position: fixed;
   z-index: 10000;

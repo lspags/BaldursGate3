@@ -1202,6 +1202,140 @@ def spell_choice_field(class_name: str, kind: str, label: str, options, limit: i
     )
 
 
+def parse_spell_choice_kind(kind: str) -> tuple[str, int, str]:
+    parts = (kind or "").split("|")
+    category = parts[0] if parts else ""
+    character_level = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    pool = parts[2] if len(parts) > 2 else ""
+    return category, character_level, pool
+
+
+def resolved_spell_selections(values, ids) -> dict[str, dict[str, list[str]]]:
+    """Replay level-specific spell acquisitions and replacements chronologically."""
+    result: dict[str, dict[str, list[str]]] = {}
+    events = []
+    for value, item_id in zip(values or [], ids or []):
+        category, character_level, pool = parse_spell_choice_kind(item_id.get("kind", ""))
+        events.append((character_level, category, pool, item_id["class"], list(value or []), int(item_id.get("limit", 99))))
+    for character_level, category, pool, class_name, selected, limit in sorted(events, key=lambda event: (event[0], event[1] == "replace_to")):
+        class_result = result.setdefault(class_name, {"cantrips": [], "known": [], "prepared": [], "replace_from": {}})
+        selected = selected[:limit]
+        if category in {"cantrips", "known", "prepared"}:
+            class_result[category].extend(spell for spell in selected if spell not in class_result[category])
+        elif category == "replace_from":
+            class_result["replace_from"][character_level] = selected[0] if selected else None
+        elif category == "replace_to" and selected:
+            removed = class_result["replace_from"].get(character_level)
+            if removed in class_result["known"]:
+                class_result["known"].remove(removed)
+                if selected[0] not in class_result["known"]:
+                    class_result["known"].append(selected[0])
+    return result
+
+
+def known_spells_before_level(values, ids, class_name: str, character_level: int) -> list[str]:
+    filtered_values, filtered_ids = [], []
+    for value, item_id in zip(values or [], ids or []):
+        _category, event_level, _pool = parse_spell_choice_kind(item_id.get("kind", ""))
+        if item_id.get("class") == class_name and event_level < character_level:
+            filtered_values.append(value)
+            filtered_ids.append(item_id)
+    return resolved_spell_selections(filtered_values, filtered_ids).get(class_name, {}).get("known", [])
+
+
+SUBCLASS_SPELL_ACQUISITIONS = {
+    ("Fighter", "Eldritch Knight"): {
+        3: [("restricted", 2), ("wizard", 1)], 4: [("restricted", 1)],
+        7: [("restricted", 2)], 8: [("wizard", 1)], 10: [("restricted", 1)], 11: [("restricted", 1)],
+    },
+    ("Rogue", "Arcane Trickster"): {
+        3: [("restricted", 2), ("wizard", 1)], 4: [("restricted", 1)],
+        7: [("restricted", 1)], 8: [("wizard", 1)], 10: [("restricted", 1)], 11: [("restricted", 1)],
+    },
+}
+
+
+def spell_rows_for_pool(class_name: str, subclass: str | None, pool: str, max_spell_level: int, cantrips=False):
+    spell_list = class_name
+    if pool == "wizard":
+        spell_list = "Wizard"
+    elif (class_name, subclass) in SUBCLASS_SPELLCASTERS:
+        spell_list = SUBCLASS_SPELLCASTERS[(class_name, subclass)]["spell_list"]
+    rows = [row for row in SPELLS if spell_list in row["classes"].split("; ")]
+    if cantrips:
+        return [row for row in rows if row["level"] == "C"]
+    return [row for row in rows if row["level"].isdigit() and int(row["level"]) <= max_spell_level]
+
+
+def level_spell_builder(level_classes, level_subclasses, ability_data, feat_effects, equipment_effects):
+    active_classes = []
+    for class_name in level_classes or []:
+        if not class_name:
+            break
+        active_classes.append(class_name)
+    chosen_subclasses, counts, cards = {}, Counter(), []
+    for character_level, class_name in enumerate(active_classes, 1):
+        counts[class_name] += 1
+        class_level = counts[class_name]
+        selected_here = (level_subclasses or [None] * 12)[character_level - 1]
+        if selected_here:
+            chosen_subclasses[class_name] = selected_here
+        subclass = chosen_subclasses.get(class_name)
+        profile = spell_profile(class_name, class_level, ability_data, feat_effects, equipment_effects, subclass)
+        previous = spell_profile(class_name, class_level - 1, ability_data, feat_effects, equipment_effects, subclass) if class_level > 1 else None
+        if not profile:
+            continue
+        previous_cantrips = previous["cantrips"] if previous else 0
+        previous_learned = previous["learned"] if previous else 0
+        fields = []
+        cantrip_delta = max(0, profile["cantrips"] - previous_cantrips)
+        if cantrip_delta:
+            rows = spell_rows_for_pool(class_name, subclass, "restricted", profile["max_spell_level"], cantrips=True)
+            fields.append(spell_choice_field(class_name, f"cantrips|{character_level}|restricted", f"New cantrips ({cantrip_delta})", [spell_option(row) for row in rows], cantrip_delta))
+
+        subclass_events = SUBCLASS_SPELL_ACQUISITIONS.get((class_name, subclass), {}).get(class_level, [])
+        if subclass_events:
+            school_label = "Abjuration or Evocation" if class_name == "Fighter" else "Enchantment or Illusion"
+            for event_index, (pool, limit) in enumerate(subclass_events, 1):
+                rows = spell_rows_for_pool(class_name, subclass, pool, profile["max_spell_level"])
+                label = f"New {school_label} spell{'s' if limit != 1 else ''} ({limit})" if pool == "restricted" else "New spell from the full Wizard list (1)"
+                fields.append(spell_choice_field(class_name, f"known|{character_level}|{pool}-{event_index}", label, [spell_option(row) for row in rows], limit))
+        else:
+            learned_delta = max(0, profile["learned"] - previous_learned)
+            if learned_delta and (profile["known_caster"] or class_name == "Wizard"):
+                rows = spell_rows_for_pool(class_name, subclass, "class", profile["max_spell_level"])
+                label = f"New {'spells learned' if class_name == 'Wizard' else 'spells known'} ({learned_delta})"
+                fields.append(spell_choice_field(class_name, f"known|{character_level}|class", label, [spell_option(row) for row in rows], learned_delta))
+
+        if profile["known_caster"] and previous_learned:
+            fields.extend([
+                spell_choice_field(class_name, f"replace_from|{character_level}|known", "Optional: spell to replace", [], 1),
+                spell_choice_field(class_name, f"replace_to|{character_level}|{'wizard' if (class_name, subclass) in SUBCLASS_SPELLCASTERS else 'class'}", "Optional: replacement spell", [], 1),
+            ])
+        if fields:
+            cards.append(html.Section([
+                html.Div([
+                    html.Div([html.Span(f"Character level {character_level}", className="level-row-kicker"), html.H3(f"{class_name} level {class_level}")]),
+                    html.Span(f"{subclass + ' · ' if subclass else ''}{profile['ability']}")
+                ], className="spell-card-heading"),
+                html.Div(fields, className="spell-choice-grid"),
+            ], className="spell-card spell-level-card"))
+
+    final_counts = Counter(active_classes)
+    for class_name, class_level in final_counts.items():
+        subclass = chosen_subclasses.get(class_name)
+        profile = spell_profile(class_name, class_level, ability_data, feat_effects, equipment_effects, subclass)
+        if not profile or not profile["prepared"]:
+            continue
+        rows = spell_rows_for_pool(class_name, subclass, "class", profile["max_spell_level"])
+        cards.append(html.Section([
+            html.Div([html.H3(f"{class_name} prepared spells"), html.Span(f"Current limit: {profile['prepared']}")], className="spell-card-heading"),
+            spell_choice_field(class_name, "prepared|0|current", "Prepared now", [spell_option(row) for row in rows], profile["prepared"]),
+            html.P("Wizard prepared spells must be among the spells learned above.", className="spell-card-note") if class_name == "Wizard" else None,
+        ], className="spell-card spell-prepared-card"))
+    return cards or html.P("Choose a spellcasting class on the Leveling tab to unlock spell selections.", className="leveling-empty")
+
+
 def spell_tooltip_list(names, spell_attack_bonus=None, spellcasting_ability=None):
     rendered = []
     for name in dict.fromkeys(names or []):
@@ -1993,10 +2127,16 @@ def team_member_card(payload, slot):
     class_line = " / ".join(f"{name} {level}" for name, level in class_counts.items()) or "No class"
     equipment_ids = [value for value in (payload.get("equipment") or {}).values() if value]
     equipment_names = [EQUIPMENT_BY_ID[value]["item"] for value in equipment_ids if value in EQUIPMENT_BY_ID]
-    spells = []
-    for record in payload.get("spell_choices") or []:
-        value = record.get("value")
-        spells.extend(value if isinstance(value, list) else ([value] if value else []))
+    spell_records = payload.get("spell_choices") or []
+    spell_state = resolved_spell_selections(
+        [record.get("value") for record in spell_records],
+        [record.get("id") or {} for record in spell_records],
+    )
+    spells = [
+        spell for class_state in spell_state.values()
+        for category in ("cantrips", "known", "prepared")
+        for spell in class_state.get(category, [])
+    ]
     attacks = []
     for record in payload.get("class_choices") or []:
         value = record.get("value")
@@ -2383,6 +2523,36 @@ def restore_dynamic_build_choices(payload, _feat_children, _class_children, _spe
     class_records = payload.get("class_choices") or []
     spell_records = payload.get("spell_choices") or []
 
+    # Builds saved before level-based spell acquisition used one cumulative
+    # cantrip/known/prepared selector per class. Distribute those values across
+    # the new chronological controls so existing builds remain editable.
+    migrated_spell_records = [
+        record for record in spell_records
+        if "|" in (record.get("id") or {}).get("kind", "")
+        or (record.get("id") or {}).get("kind", "") not in {"cantrips", "known", "prepared"}
+    ]
+    for record in spell_records:
+        legacy_id = record.get("id") or {}
+        legacy_kind = legacy_id.get("kind", "")
+        if "|" in legacy_kind or legacy_kind not in {"cantrips", "known", "prepared"}:
+            continue
+        remaining = list(record.get("value") or [])
+        targets = [
+            item_id for item_id in (spell_ids or [])
+            if item_id.get("class") == legacy_id.get("class")
+            and parse_spell_choice_kind(item_id.get("kind", ""))[0] == legacy_kind
+        ]
+        if not targets:
+            # Keep the unmatched legacy record as a readiness sentinel until
+            # the new level-specific controls have actually mounted.
+            migrated_spell_records.append(record)
+            continue
+        targets.sort(key=lambda item_id: parse_spell_choice_kind(item_id["kind"])[1])
+        for target in targets:
+            limit = int(target.get("limit", len(remaining)))
+            migrated_spell_records.append({"id": target, "value": remaining[:limit]})
+            remaining = remaining[limit:]
+
     def controls_ready(records, current_ids):
         current_ids = current_ids or []
         return all(any(record.get("id") == current_id for current_id in current_ids) for record in records)
@@ -2390,12 +2560,12 @@ def restore_dynamic_build_choices(payload, _feat_children, _class_children, _spe
     restoration_complete = (
         controls_ready(feat_records, feat_ids)
         and controls_ready(class_records, class_ids)
-        and controls_ready(spell_records, spell_ids)
+        and controls_ready(migrated_spell_records, spell_ids)
     )
     return (
         restored_pattern_values(feat_records, feat_ids),
         restored_pattern_values(class_records, class_ids),
-        restored_pattern_values(spell_records, spell_ids),
+        restored_pattern_values(migrated_spell_records, spell_ids),
         None if restoration_complete else no_update,
     )
 
@@ -2777,7 +2947,11 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
     choices = []
     chosen_subclasses = {}
     existing = {(item_id["level"], item_id["feature"]): value for value, item_id in zip(current_values or [], current_ids or [])}
-    used_unique = {"Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(), "Expertise": set(), "Skill Proficiencies": set(), "Elemental Disciplines": set()}
+    used_unique = {
+        "Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(),
+        "Expertise": set(), "Skill Proficiencies": set(), "Elemental Disciplines": set(),
+        "Battle Manoeuvres": set(), "Arcane Shots": set(),
+    }
 
     background_row = next((row for row in BACKGROUNDS if row["background"] == background), None)
     race_row = next((row for row in RACES if row["race"] == race), None)
@@ -2945,10 +3119,10 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
 
         if class_name == "Fighter" and subclass == "Battle Master" and class_level in {3, 7, 10}:
             limit = {3: 3, 7: 2, 10: 2}[class_level]
-            controls.append(choice_control(level, "Battle Manoeuvres", f"Battle Manoeuvres ({limit})", MANOEUVRES, True, limit))
+            controls.append(choice_control(level, "Battle Manoeuvres", f"Battle Manoeuvres ({limit})", MANOEUVRES, True, limit, unique=True))
         if class_name == "Fighter" and subclass == "Arcane Archer" and class_level in {3, 7, 10}:
             limit = 3 if class_level == 3 else 1
-            controls.append(choice_control(level, "Arcane Shots", f"Arcane Shots ({limit})", ARCANE_SHOTS, True, limit))
+            controls.append(choice_control(level, "Arcane Shots", f"Arcane Shots ({limit})", ARCANE_SHOTS, True, limit, unique=True))
         if class_name == "Sorcerer" and class_level in {2, 3, 10}:
             limit = 2 if class_level == 2 else 1
             metamagic_options = METAMAGIC_BASIC if class_level == 2 else METAMAGIC_BASIC + METAMAGIC_ADVANCED
@@ -3571,6 +3745,7 @@ def render_skills(ability_data, background, race, subrace, human_skill, level_cl
     Input("equipment-effects-store", "data"),
 )
 def render_spell_builder(level_classes, level_subclasses, ability_data, feat_effects, equipment_effects):
+    return level_spell_builder(level_classes, level_subclasses, ability_data, feat_effects, equipment_effects)
     counts = Counter()
     chosen_subclasses = {}
     for class_name in level_classes or []:
@@ -3694,6 +3869,58 @@ def racial_granted_spells(race, subrace, character_level):
     return list(dict.fromkeys(granted))
 
 
+def level_spell_option_sets(values, level_classes, level_subclasses, class_choice_values, race, subrace, ids):
+    values, ids = values or [], ids or []
+    resolved = resolved_spell_selections(values, ids)
+    all_selected = {
+        spell for value, item_id in zip(values, ids)
+        if parse_spell_choice_kind(item_id.get("kind", ""))[0] != "replace_from"
+        for spell in (value or [])
+    }
+    granted_by_class = class_granted_spells(level_classes, level_subclasses, class_choice_values)
+    racial_grants = racial_granted_spells(race, subrace, len([value for value in (level_classes or []) if value]))
+    all_granted = {spell for spells in granted_by_class.values() for spell in spells} | set(racial_grants)
+    chosen_subclasses = {
+        class_name: subclass for class_name, subclass in zip(level_classes or [], level_subclasses or [])
+        if class_name and subclass
+    }
+    triggered_spell_id = ctx.triggered_id if isinstance(ctx.triggered_id, dict) and ctx.triggered_id.get("type") == "spell-choice" else None
+    option_sets = []
+    for value, item_id in zip(values, ids):
+        if triggered_spell_id == item_id:
+            option_sets.append(no_update)
+            continue
+        class_name = item_id["class"]
+        category, character_level, pool = parse_spell_choice_kind(item_id["kind"])
+        own_selected = set(value or [])
+        if character_level:
+            class_level = sum(1 for name in (level_classes or [])[:character_level] if name == class_name)
+        else:
+            class_level = sum(1 for name in (level_classes or []) if name == class_name)
+        subclass = chosen_subclasses.get(class_name)
+        profile = spell_profile(class_name, class_level, {}, {}, {}, subclass)
+        max_spell_level = profile["max_spell_level"] if profile else 0
+        normalized_pool = "restricted" if pool.startswith("restricted") else pool
+
+        if category == "replace_from":
+            candidates = [next(row for row in SPELLS if row["spell"] == spell) for spell in known_spells_before_level(values, ids, class_name, character_level) if any(row["spell"] == spell for row in SPELLS)]
+            option_sets.append([spell_option(row) for row in candidates])
+            continue
+        if category == "cantrips":
+            candidates = spell_rows_for_pool(class_name, subclass, normalized_pool, max_spell_level, cantrips=True)
+        elif category == "prepared" and class_name == "Wizard":
+            learned = set(resolved.get("Wizard", {}).get("known", []))
+            candidates = [row for row in SPELLS if row["spell"] in learned]
+        else:
+            candidates = spell_rows_for_pool(class_name, subclass, normalized_pool, max_spell_level)
+
+        unavailable = (all_selected - own_selected) | all_granted
+        if category == "prepared":
+            unavailable -= set(resolved.get(class_name, {}).get("known", []))
+        option_sets.append([spell_option(row) for row in candidates if row["spell"] not in unavailable or row["spell"] in own_selected])
+    return option_sets
+
+
 @callback(
     Output({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "options"),
     Input({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "value"),
@@ -3704,6 +3931,7 @@ def racial_granted_spells(race, subrace, character_level):
     State({"type": "spell-choice", "class": ALL, "kind": ALL, "limit": ALL}, "id"),
 )
 def filter_owned_spell_options(values, level_classes, level_subclasses, class_choice_values, race, subrace, ids):
+    return level_spell_option_sets(values, level_classes, level_subclasses, class_choice_values, race, subrace, ids)
     values, ids = values or [], ids or []
     selections = {(item_id["class"], item_id["kind"]): list(value or []) for value, item_id in zip(values, ids)}
     all_selected = {spell for selected in selections.values() for spell in selected}
@@ -4287,6 +4515,18 @@ def render_attack_builder(class_values, subclass_values, choice_values, race, su
     if "Pact of the Blade" not in selected_values:
         active_features.discard("Pact Weapon")
     cards = []
+    level_combat_choices = []
+    for value, item_id in zip(choice_values or [], choice_ids or []):
+        if item_id.get("feature") not in {"Battle Manoeuvres", "Arcane Shots"}:
+            continue
+        selected_at_level = value if isinstance(value, list) else [value] if value else []
+        level_combat_choices.append(html.Div([
+            html.Span(f"Character level {item_id.get('level')}", className="level-row-kicker"),
+            html.Strong(item_id.get("feature")),
+            html.P(combat_action_tooltips(selected_at_level), className="attack-list") if selected_at_level else html.P("Selection required on the Leveling tab.", className="spell-card-note"),
+        ], className="combat-choice-level-row"))
+    if level_combat_choices:
+        cards.append(html.Section([html.H3("Combat choices by level"), *level_combat_choices], className="spell-card combat-choice-history"))
     styles = list(dict.fromkeys(selected.get("Fighting Style", [])))
     profs = character_equipment_proficiencies(race, subrace, class_values, feat_effects, subclass_values)
 
@@ -4940,9 +5180,11 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             for flurry_name in flurry_names:
                 bonus_candidates.append({"name": flurry_name, "stats": flurry, "detail": " Costs 1 Ki Point; two unarmed strikes. " + COMBAT_ACTION_DESCRIPTIONS.get(flurry_name, "") + (f" Each strike includes {', '.join(unarmed_notes)}." if unarmed_notes else "")})
 
-    selections = {}
-    for values, item_id in zip(spell_values or [], spell_ids or []):
-        selections.setdefault(item_id["kind"], []).extend(values or [])
+    resolved_spells = resolved_spell_selections(spell_values, spell_ids)
+    selections = {
+        category: [spell for class_spells in resolved_spells.values() for spell in class_spells.get(category, [])]
+        for category in ("cantrips", "known", "prepared")
+    }
     equipped_ids = [melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
                     handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id]
     equipment_spell_grants = equipment_granted_spells(equipped_ids)
@@ -5508,9 +5750,7 @@ def render_spell_slots(level_classes, level_subclasses, feat_values):
 def render_sheet_spells(values, level_classes, level_subclasses, class_choice_values, race, subrace, ability_data, feat_effects, equipment_effects,
                         melee_main_id, melee_off_id, ranged_main_id, ranged_off_id, headwear_id, armour_id,
                         handwear_id, footwear_id, cape_id, necklace_id, ring_1_id, ring_2_id, ids):
-    selections = {}
-    for value, item_id in zip(values or [], ids or []):
-        selections[(item_id["class"], item_id["kind"])] = list(value or [])[:int(item_id["limit"])]
+    selections = resolved_spell_selections(values, ids)
     granted_by_class = class_granted_spells(level_classes, level_subclasses, class_choice_values)
     racial_grants = racial_granted_spells(race, subrace, len([value for value in (level_classes or []) if value]))
     if racial_grants:
@@ -5524,9 +5764,9 @@ def render_sheet_spells(values, level_classes, level_subclasses, class_choice_va
         class_row = next((row for row in CLASSES if row["class"] == class_name), None)
         casting_ability = "Intelligence" if class_name in {"Fighter", "Rogue"} else spellcasting_ability_name(class_row["spellcasting_ability"]) if class_row else None
         spell_attack_bonus = proficiency + modifiers.get(casting_ability, 0) if casting_ability in modifiers else None
-        cantrips = selections.get((class_name, "cantrips"), [])
-        known = selections.get((class_name, "known"), [])
-        prepared = selections.get((class_name, "prepared"), [])
+        cantrips = selections.get(class_name, {}).get("cantrips", [])
+        known = selections.get(class_name, {}).get("known", [])
+        prepared = selections.get(class_name, {}).get("prepared", [])
         granted = granted_by_class.get(class_name, [])
         prepared_display = [spell for spell in prepared if class_name != "Wizard" or spell in known]
         usable_levelled = prepared_display if class_name in PREPARED_CASTERS else known
