@@ -56,6 +56,17 @@ EQUIPMENT_RACIAL_RULES = {
     },
 }
 
+RECURRING_CHOICE_SCHEDULES = {
+    ("Warlock", "Eldritch Invocations"): {2: 2, 5: 1, 7: 1, 9: 1, 12: 1},
+    ("Sorcerer", "Metamagic"): {2: 2, 3: 1, 10: 1},
+    ("Rogue", "Expertise"): {1: 2, 6: 2},
+    ("Bard", "Expertise"): {3: 2, 10: 2},
+    ("Fighter", "Battle Manoeuvres"): {3: 3, 7: 2, 10: 2},
+    ("Fighter", "Arcane Shots"): {3: 3, 7: 1, 10: 1},
+    ("Monk", "Elemental Disciplines"): {3: 3, 6: 1, 9: 1, 11: 1},
+    ("Barbarian", "Animal Aspect"): {6: 1, 10: 1},
+}
+
 
 def ability_modifier(score: int) -> int:
     return (int(score) - 10) // 2

@@ -1,7 +1,7 @@
 import unittest
 
 from bg3_rules import (
-    EQUIPMENT_RACIAL_RULES, ability_modifier, paladin_max_spell_level, point_buy_spent,
+    EQUIPMENT_RACIAL_RULES, RECURRING_CHOICE_SCHEDULES, ability_modifier, paladin_max_spell_level, point_buy_spent,
     prepared_spell_limit, proficiency_bonus, weapon_attack_ability,
 )
 
@@ -30,6 +30,19 @@ class SpellcastingRulesTests(unittest.TestCase):
         expected = {1: 0, 2: 1, 4: 1, 5: 2, 8: 2, 9: 3, 12: 3}
         for level, spell_level in expected.items():
             self.assertEqual(paladin_max_spell_level(level), spell_level)
+
+
+class RecurringChoiceTests(unittest.TestCase):
+    def test_warlock_invocations_recur_at_every_required_level(self):
+        self.assertEqual(
+            RECURRING_CHOICE_SCHEDULES[("Warlock", "Eldritch Invocations")],
+            {2: 2, 5: 1, 7: 1, 9: 1, 12: 1},
+        )
+
+    def test_other_repeated_class_choices_are_tracked(self):
+        self.assertEqual(RECURRING_CHOICE_SCHEDULES[("Sorcerer", "Metamagic")][10], 1)
+        self.assertEqual(RECURRING_CHOICE_SCHEDULES[("Fighter", "Battle Manoeuvres")][7], 2)
+        self.assertEqual(RECURRING_CHOICE_SCHEDULES[("Barbarian", "Animal Aspect")][10], 1)
 
 
 class WeaponRulesTests(unittest.TestCase):

@@ -16,7 +16,8 @@ from persistence import (
     revoke_build_share, save_build, save_team, user_identity,
 )
 from bg3_rules import (
-    EQUIPMENT_RACIAL_RULES, POINT_BUY_COSTS, ability_modifier, prepared_spell_limit, proficiency_bonus,
+    EQUIPMENT_RACIAL_RULES, POINT_BUY_COSTS, RECURRING_CHOICE_SCHEDULES,
+    ability_modifier, prepared_spell_limit, proficiency_bonus,
     weapon_attack_ability,
 )
 from build_validation import (
@@ -178,10 +179,14 @@ TURN_OPTIMIZER_EXCLUDED_SPELLS = {
     # damage is not part of the summoning character's action sequence.
     "Spiritual Weapon",
 }
-WARLOCK_LEVEL_2_INVOCATIONS = [
-    "Agonising Blast", "Armour of Shadows", "Beast Speech", "Beguiling Influence", "Devil's Sight",
-    "Fiendish Vigour", "Mask of Many Faces", "One with Shadows", "Repelling Blast", "Thief of Five Fates",
-]
+WARLOCK_INVOCATIONS_BY_LEVEL = {
+    2: ["Agonising Blast", "Armour of Shadows", "Beast Speech", "Beguiling Influence", "Devil's Sight",
+        "Fiendish Vigour", "Mask of Many Faces", "One with Shadows", "Repelling Blast", "Thief of Five Fates"],
+    5: ["Mire the Mind", "Sign of Ill Omen"],
+    7: ["Book of Ancient Secrets", "Dreadful Word", "Sculptor of Flesh"],
+    9: ["Minions of Chaos", "Otherworldly Leap", "Whispers of the Grave"],
+    12: ["Lifedrinker"],
+}
 ELDRITCH_INVOCATION_DESCRIPTIONS = {
     "Agonising Blast": "Add your Charisma modifier to the damage of each Eldritch Blast beam, unless the modifier is negative.",
     "Armour of Shadows": "Cast Mage Armour on yourself at will without expending a spell slot. While you are not wearing armour, Mage Armour sets your base Armour Class to 13 + Dexterity modifier.",
@@ -193,6 +198,34 @@ ELDRITCH_INVOCATION_DESCRIPTIONS = {
     "One with Shadows": "While in dim light or darkness, use an Action to become Invisible. The effect ends if you move, attack, cast another spell, take an action, or take damage.",
     "Repelling Blast": "When Eldritch Blast hits, toggle an effect that pushes the target up to 4.5 m. Multiple beams against one creature only push it once.",
     "Thief of Five Fates": "Cast Bane with a Warlock spell slot once per Long Rest. Affected creatures subtract 1d4 from Attack Rolls and Saving Throws.",
+    "Mire the Mind": "Cast Slow using a Warlock spell slot.",
+    "Sign of Ill Omen": "Cast Bestow Curse using a Warlock spell slot.",
+    "Book of Ancient Secrets": "Gain Ray of Sickness, Chromatic Orb, and Silence; cast each once per Long Rest without expending spell slots.",
+    "Dreadful Word": "Cast Confusion using a Warlock spell slot.",
+    "Sculptor of Flesh": "Cast Polymorph using a Warlock spell slot.",
+    "Minions of Chaos": "Cast Conjure Elemental using a Warlock spell slot.",
+    "Otherworldly Leap": "Cast Enhance Leap at will without expending a spell slot.",
+    "Whispers of the Grave": "Cast Speak with Dead at will without expending a spell slot.",
+    "Lifedrinker": "Melee weapon attacks deal additional Necrotic damage equal to your Charisma modifier.",
+}
+BESTIAL_HEARTS = {
+    "Bear Heart": "While Raging, resist all damage except Psychic and gain Unrelenting Ferocity.",
+    "Eagle Heart": "While Raging, gain Diving Strike, impose Disadvantage on enemy Opportunity Attacks, and Dash as a Bonus Action.",
+    "Elk Heart": "While Raging, gain Primal Stampede and 4.5 m additional movement.",
+    "Tiger Heart": "While Raging, gain Tiger's Bloodlust and 4.5 m additional jump distance.",
+    "Wolf Heart": "While Raging, gain Inciting Howl and grant allies Advantage on melee attacks against nearby enemies.",
+}
+ANIMAL_ASPECTS = {
+    "Aspect of the Beast: Bear": "Double carrying capacity and gain Advantage on Strength checks.",
+    "Aspect of the Beast: Chimpanzee": "Resist falling damage; thrown camp supplies Blind targets.",
+    "Aspect of the Beast: Crocodile": "Gain 3 m movement in water surfaces and Advantage against being knocked Prone on slippery surfaces.",
+    "Aspect of the Beast: Eagle": "Gain 12 m Darkvision and Advantage on Perception checks.",
+    "Aspect of the Beast: Elk": "You and nearby allies gain 1.5 m movement.",
+    "Aspect of the Beast: Honey Badger": "When Poisoned, Frightened, or Charmed at turn start, have a 50% chance to Rage without spending a charge.",
+    "Aspect of the Beast: Stallion": "Dashing grants temporary Hit Points equal to twice your Barbarian level.",
+    "Aspect of the Beast: Tiger": "Add another Strength modifier to attacks against Bleeding or Poisoned targets and gain Survival proficiency.",
+    "Aspect of the Beast: Wolf": "You and nearby allies add your Dexterity modifier to Stealth checks.",
+    "Aspect of the Beast: Wolverine": "Attacking a Bleeding or Poisoned target inflicts Maim.",
 }
 MONK_ELEMENTAL_DISCIPLINES = [
     "Blade of Rime", "Chill of the Mountain", "Fangs of the Fire Snake", "Fist of Four Thunders",
@@ -945,7 +978,7 @@ def class_feature_tooltips(features, inline_descriptions=None):
         if feature in MONK_DISCIPLINE_DAMAGE:
             expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[feature]
             monk_discipline_description = f"Damage: {expression} {damage_type}; costs {ki_cost} Ki. Uses Wisdom for its attack roll or save DC unless its feature states otherwise."
-        description = expertise_description or proficiency_description or knowledge_description or override_description or monk_discipline_description or ELDRITCH_INVOCATION_DESCRIPTIONS.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description])))
+        description = expertise_description or proficiency_description or knowledge_description or override_description or monk_discipline_description or ELDRITCH_INVOCATION_DESCRIPTIONS.get(feature) or BESTIAL_HEARTS.get(feature) or ANIMAL_ASPECTS.get(feature) or PACT_BOONS.get(feature) or RANGER_FAVOURED_ENEMIES.get(feature) or RANGER_NATURAL_EXPLORERS.get(feature) or (style or {}).get("description", "") or " ".join(dict.fromkeys(filter(None, [inline_description, wiki_description])))
         if not description:
             description = "No effect description is available yet for this class feature."
         if rendered:
@@ -2189,7 +2222,25 @@ def validate_current_build(race, subrace, background, human_skill, feat_effects,
                 issues.append(BuildIssue("Leveling", f"Choose the feat available at character level {index + 1}."))
 
     issues.extend(validate_required_controls(feat_choice_values, feat_choice_ids, "Leveling"))
-    issues.extend(validate_required_controls(class_choice_values, class_choice_ids, "Leveling"))
+    scheduled_features = {feature for _class_name, feature in RECURRING_CHOICE_SCHEDULES}
+    issues.extend(validate_required_controls(
+        class_choice_values, class_choice_ids, "Leveling", scheduled_features,
+    ))
+    for value, item_id in zip(class_choice_values or [], class_choice_ids or []):
+        character_level = int(item_id.get("level", 0))
+        source_class = (classes or [None] * 12)[character_level - 1] if 0 < character_level <= len(classes or []) else None
+        feature = item_id.get("feature")
+        if not source_class or not feature:
+            continue
+        class_level = sum(1 for class_name in (classes or [])[:character_level] if class_name == source_class)
+        required = RECURRING_CHOICE_SCHEDULES.get((source_class, feature), {}).get(class_level)
+        if not required:
+            continue
+        selected = value if isinstance(value, list) else ([value] if value else [])
+        if len(selected) < required:
+            issues.append(BuildIssue(
+                "Leveling", f"Complete {feature} at character level {character_level} ({len(selected)}/{required} selected).",
+            ))
     issues.extend(validate_required_controls(
         spell_values, spell_ids, "Spells", {"replace_from", "replace_to"},
     ))
@@ -3184,7 +3235,8 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
     used_unique = {
         "Fighting Style": set(), "Favoured Enemy": set(), "Natural Explorer": set(),
         "Expertise": set(), "Skill Proficiencies": set(), "Elemental Disciplines": set(),
-        "Battle Manoeuvres": set(), "Arcane Shots": set(),
+        "Battle Manoeuvres": set(), "Arcane Shots": set(), "Eldritch Invocations": set(),
+        "Animal Aspect": set(), "Metamagic": set(),
     }
 
     background_row = next((row for row in BACKGROUNDS if row["background"] == background), None)
@@ -3255,7 +3307,7 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
             ancestry_description = f"Grants {DRACONIC_ANCESTRIES[value]}." if value in DRACONIC_ANCESTRIES else ""
             spell_row = next((row for row in SPELLS if row["spell"] == value), None)
             spell_description = spell_row.get("description", "") if spell_row else ""
-            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or invocation_description or ancestry_description or land_description or spell_description or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
+            description = (style or {}).get("description", "") or (feature_row or {}).get("description", "") or ARCANE_SHOT_DESCRIPTIONS.get(value, "") or MANOEUVRE_EFFECTS.get(value, "") or PACT_BOONS.get(value, "") or RANGER_FAVOURED_ENEMIES.get(value, "") or RANGER_NATURAL_EXPLORERS.get(value, "") or invocation_description or BESTIAL_HEARTS.get(value, "") or ANIMAL_ASPECTS.get(value, "") or ancestry_description or land_description or spell_description or (f"{SKILL_TO_ABILITY[value]} skill; Expertise doubles your proficiency bonus for its checks." if value in SKILL_TO_ABILITY else "")
             if value in MONK_DISCIPLINE_DAMAGE:
                 expression, damage_type, ki_cost = MONK_DISCIPLINE_DAMAGE[value]
                 description += f" Damage: {expression} {damage_type}. Cost: {ki_cost} Ki Point{'s' if ki_cost != 1 else ''}."
@@ -3300,10 +3352,15 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
                 ["Animal Handling", "Nature", "Survival"], multi=True, limit=1,
                 unique=True, valid_only=True,
             ))
-        if class_name == "Warlock" and class_level == 2:
+        invocation_limit = RECURRING_CHOICE_SCHEDULES[("Warlock", "Eldritch Invocations")].get(class_level)
+        if class_name == "Warlock" and invocation_limit:
+            invocation_options = [
+                invocation for unlock_level, invocations in WARLOCK_INVOCATIONS_BY_LEVEL.items()
+                if unlock_level <= class_level for invocation in invocations
+            ]
             controls.append(choice_control(
-                level, "Eldritch Invocations", "Eldritch Invocations (2)", WARLOCK_LEVEL_2_INVOCATIONS,
-                multi=True, limit=2, valid_only=True,
+                level, "Eldritch Invocations", f"Eldritch Invocations ({invocation_limit})", invocation_options,
+                multi=True, limit=invocation_limit, unique=True, valid_only=True,
             ))
         if class_name == "Monk" and subclass == "Way of the Four Elements" and class_level in {3, 6, 9, 11}:
             unlocked = MONK_ELEMENTAL_DISCIPLINES[:11]
@@ -3368,7 +3425,20 @@ def render_class_feature_choices(class_values, subclass_values, current_values, 
         if class_name == "Sorcerer" and class_level in {2, 3, 10}:
             limit = 2 if class_level == 2 else 1
             metamagic_options = METAMAGIC_BASIC if class_level == 2 else METAMAGIC_BASIC + METAMAGIC_ADVANCED
-            controls.append(choice_control(level, "Metamagic", f"Metamagic ({limit})", metamagic_options, True, limit))
+            controls.append(choice_control(
+                level, "Metamagic", f"Metamagic ({limit})", metamagic_options,
+                multi=True, limit=limit, unique=True, valid_only=True,
+            ))
+        if class_name == "Barbarian" and subclass == "Wildheart" and class_level == 3:
+            controls.append(choice_control(level, "Bestial Heart", "Bestial Heart", list(BESTIAL_HEARTS)))
+        if class_name == "Barbarian" and subclass == "Wildheart" and class_level in {6, 10}:
+            controls.append(choice_control(
+                level, "Animal Aspect", "Animal Aspect", list(ANIMAL_ASPECTS), unique=True,
+            ))
+        if class_name == "Fighter" and subclass == "Arcane Archer" and class_level == 3:
+            controls.append(choice_control(
+                level, "Arcane Archer Cantrip", "Arcane Archer Cantrip", ["Guidance", "Light", "True Strike"],
+            ))
         if class_name == "Sorcerer" and class_level == 1 and subclass == "Draconic Bloodline":
             controls.append(choice_control(
                 level, "Draconic Ancestry", "Draconic Ancestry", list(DRACONIC_ANCESTRIES),
@@ -4091,6 +4161,22 @@ def class_granted_spells(level_classes, level_subclasses, class_choice_values):
     for choice, spell in ranger_grants.items():
         if choice in selected_choices:
             granted.setdefault("Ranger", []).append(spell)
+    invocation_grants = {
+        "Armour of Shadows": ["Mage Armour"], "Beast Speech": ["Speak with Animals"],
+        "Fiendish Vigour": ["False Life"], "Mask of Many Faces": ["Disguise Self"],
+        "Thief of Five Fates": ["Bane"], "Mire the Mind": ["Slow"],
+        "Sign of Ill Omen": ["Bestow Curse"],
+        "Book of Ancient Secrets": ["Ray of Sickness", "Chromatic Orb", "Silence"],
+        "Dreadful Word": ["Confusion"], "Sculptor of Flesh": ["Polymorph"],
+        "Minions of Chaos": ["Conjure Elemental"], "Otherworldly Leap": ["Enhance Leap"],
+        "Whispers of the Grave": ["Speak with Dead"],
+    }
+    for invocation, spells in invocation_grants.items():
+        if invocation in selected_choices:
+            granted.setdefault("Warlock", []).extend(spells)
+    for cantrip in ("Guidance", "Light", "True Strike"):
+        if cantrip in selected_choices and ("Fighter", "Arcane Archer") in selected_subclasses:
+            granted.setdefault("Fighter", []).append(cantrip)
     for choice, spell in DRACONIC_ANCESTRIES.items():
         if choice in selected_choices:
             granted.setdefault("Sorcerer", []).append(spell)
@@ -5198,6 +5284,9 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
             aura_of_hate = counts.get("Paladin", 0) >= 7 and ("Paladin", "Oathbreaker") in selected_subclasses and row["category"] == "melee"
             if aura_of_hate:
                 per_hit = tuple(value + modifiers["Charisma"] for value in per_hit)
+            lifedrinker = "Lifedrinker" in selected_choices and row["category"] == "melee"
+            if lifedrinker:
+                per_hit = tuple(value + modifiers["Charisma"] for value in per_hit)
             cleaver_active = "Elemental Cleaver" in active_features and "Rage" in active_features and elemental_cleaver_type
             if cleaver_active:
                 cleaver_stats = damage_expression_stats("1d6")
@@ -5228,6 +5317,8 @@ def optimize_turn(use_limited, class_values, subclass_values, feat_values, race,
                 active_notes.append("Improved Divine Smite +1d8 Radiant")
             if aura_of_hate:
                 active_notes.append(f"Aura of Hate {modifiers['Charisma']:+d} weapon damage")
+            if lifedrinker:
+                active_notes.append(f"Lifedrinker {modifiers['Charisma']:+d} Necrotic per hit")
             note = f" Includes {', '.join(active_notes)}." if active_notes else ""
             hit_detail = f" {expression}{flat:+d} using {ability}. Damage type: {', '.join(weapon_types) or row.get('damage_type', 'Weapon')}.{note}"
             components = [{"name": f"{name}: {row['item']}", "stats": per_hit, "detail": hit_detail} for _ in range(attacks_per_action)]
@@ -6539,6 +6630,10 @@ def render_sheet_defences(race, subrace, class_values, subclass_values, feat_val
         for choice in (value if isinstance(value, list) else [value]):
             if choice in RANGER_NATURAL_EXPLORERS:
                 merge(defensive_effects(RANGER_NATURAL_EXPLORERS[choice], f"Ranger - {choice}"))
+            elif choice in BESTIAL_HEARTS:
+                merge(defensive_effects(BESTIAL_HEARTS[choice], f"Wildheart - {choice}"))
+            elif choice in ANIMAL_ASPECTS:
+                merge(defensive_effects(ANIMAL_ASPECTS[choice], f"Wildheart - {choice}"))
 
     slot_names = ["Melee main hand", "Melee off hand", "Ranged main hand", "Ranged off hand", "Headwear", "Armour", "Handwear", "Footwear", "Cape", "Necklace", "Ring 1", "Ring 2"]
     ancestry = f"{race or ''} {subrace or ''}".lower()
@@ -6593,6 +6688,7 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
         detail_block("Background", background or "Not selected"),
     ]
 
+    selected_class_choices = [item for value in class_choice_values or [] for item in (value if isinstance(value, list) else [value]) if item]
     movement = metric_movement(race_row["base_speed"]) if race_row else "—"
     monk_level = sum(value == "Monk" for value in (level_classes or []))
     movement_equipment = [EQUIPMENT_BY_ID.get(value) for value in (melee_off_id, headwear_id, armour_id, handwear_id, footwear_id) if value]
@@ -6606,6 +6702,10 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
         if base_match:
             monk_bonus = 6 if monk_level >= 10 else 4.5 if monk_level >= 6 else 3
             movement = f"{float(base_match.group(1)) + monk_bonus:g} m"
+    if movement != "—" and "Aspect of the Beast: Elk" in selected_class_choices:
+        movement_match = re.search(r"\d+(?:\.\d+)?", movement)
+        if movement_match:
+            movement = f"{float(movement_match.group()) + 1.5:g} m"
     class_proficiencies = []
     seen_classes = set()
     for index, class_name in enumerate(level_classes or []):
@@ -6645,8 +6745,9 @@ def update_summary(name, race, subrace, background, human_skill, level_classes, 
         "Bounty Hunter": "Investigation", "Keeper of the Veil": "Arcana", "Mage Breaker": "Arcana",
         "Ranger Knight": "History", "Sanctified Stalker": "Religion", "Urban Tracker": "Sleight of Hand",
     }
-    selected_class_choices = [item for value in class_choice_values or [] for item in (value if isinstance(value, list) else [value]) if item]
     feat_proficiencies += [ranger_choice_proficiencies[choice] for choice in selected_class_choices if choice in ranger_choice_proficiencies]
+    if "Aspect of the Beast: Tiger" in selected_class_choices:
+        feat_proficiencies.append("Survival")
     feat_proficiencies += [
         f"Expertise: {choice}"
         for value, item_id in zip(class_choice_values or [], class_choice_ids or [])
